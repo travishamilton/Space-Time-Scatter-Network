@@ -42,6 +42,76 @@ with tf.name_scope('instantiate_placeholders'):
 print("Building Cost Function (Least Squares) ... ... ...")
 
 with tf.name_scope('cost_function'):
-	pre_out_field_tens = transmit(in_field_tens, weight_tens, layers) # prediction function
+    
+    pre_out_field_tens = PROPAGATE(in_field_tens,mesh,n_c,weights_tens,layers,n_x,n_y,n_z,n_w) # prediction function
+    
+    least_squares = tf.norm(pre_out_field_tens-out_field_tens, ord=2,name='least_squre')**2 	#
 
-	
+print("Done!\n")
+
+#--------------------------- Define Optimizer --------------------------#
+print("Building Optimizer ... ... ...")
+lr = 0.01
+with tf.name_scope('train'):
+	train_op = tf.train.AdamOptimizer(learning_rate=lr).minimize(least_squares, var_list = [weights_train_tens])
+with tf.name_scope('clip'):
+	clip_op = tf.assign(weights_train_tens, tf.clip_by_value(weights_train_tens, 0, 1.0))
+print("Done!\n")
+
+#--------------------------- Merge Summaries ---------------------------#
+merged = tf.summary.merge_all()
+
+#--------------------------- Training --------------------------#
+epochs = 10
+loss_tolerance = 1e-10
+table = []
+
+# saves objects for every iteration
+fileFolder = "results/" + file_id
+
+# if the results folder does not exist for the current model, create it
+if not os.path.exists(fileFolder):
+		os.makedirs(fileFolder)
+
+
+with tf.Session(config=tf.ConfigProto(gpu_options=tf.GPUOptions(allow_growth=True))) as sess:
+    sess.run( tf.global_variables_initializer() )
+
+    print("Tensor in field:")		# show info. for in field
+    print(in_field)
+    print("")
+
+    print("Tensor out field: ")		# show info. for out field
+    print(out_field)
+    print("")
+
+    print("--------- Starting Training ---------\n")
+
+    train_writer = tf.summary.FileWriter('/STSN/training summaries', sess.graph)
+    tf.global_variables_initializer().run()
+    
+    for i in range(1, epochs+1):
+
+        # run X and Y dynamically into the network per iteration and add runtime data to tensorboard summaries
+        run_options = tf.RunOptions(trace_level=tf.RunOptions.FULL_TRACE)
+        run_metadata = tf.RunMetadata()
+        _,loss_value = sess.run([train_op, least_squares], feed_dict = {in_field_tens: in_field, out_field_tens: out_field},options=run_options, run_metadata=run_metadata)
+        train_writer.add_run_metadata(run_metadata,'epoch '+str(i))
+        # perform clipping 
+        #with tf.name_scope('clip'):
+         #   sess.run(clip_op)
+
+        print('Loss: ',loss_value)
+
+        w = sess.run(weights_train_tens)
+        print('weights: ' , np.squeeze(w))
+
+        # break from training if loss tolerance is reached
+        if loss_value <= loss_tolerance:
+            endCondition = '_belowLossTolerance_epoch' + str(i)
+            print(endCondition)
+            break
+
+
+
+merged = tf.summary.merge_all()
