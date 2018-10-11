@@ -1,7 +1,7 @@
 import numpy as np
 import pickle
 
-def GET_FIELD_DATA(file_address_fields , file_address_mesh):
+def GET_DATA(file_address_fields , file_address_mesh):
     #gets the input/output scatter field based on user input
     #file_address: location of field data
     #X: input scatter field - numpy.ndarray shape (n_x,n_y,n_z,n_c)
@@ -9,6 +9,7 @@ def GET_FIELD_DATA(file_address_fields , file_address_mesh):
     #layers: number of layers in model. equal to the number of time steps there are.
     #mask_start: smallest coordinates of a cube containing the masked region - tuple int - shape(3,)
     #mask_end: largest coordinates of a cube containing the masked region - tuple int - shape(3,)
+    #mesh: parameters of the mesh - numpy.ndarray shape (n_x,n_y,n_z,3)
 
     # time_steps = input("Number of time steps: ")
     # space_steps_x = input("Number of space steps in x: ")
@@ -24,16 +25,16 @@ def GET_FIELD_DATA(file_address_fields , file_address_mesh):
     # time_changes = input("Number of time changes: ")
 
     time_steps = '100'
-    space_steps_x = '100'
-    space_steps_y = '100'
+    space_steps_x = '70'
+    space_steps_y = '70'
     space_steps_z = '1'
-    scatter_type = 'cylinder'
-    mask_start_x = '45'
-    mask_start_y = '45'
-    mask_start_z = '1'
+    scatter_type = 'none'
+    mask_start_x = '25'
+    mask_start_y = '25'
+    mask_start_z = '0'
     mask_end_x = '45'
     mask_end_y = '45'
-    mask_end_z = '1'
+    mask_end_z = '0'
     time_changes = '0'
 
     # file id
@@ -45,18 +46,21 @@ def GET_FIELD_DATA(file_address_fields , file_address_mesh):
     # file name for mesh data
     file_name_mesh = file_address_mesh + file_id
 
-    #open pickle file
-    pkl_file = open(file_name_fields + '_in.pkl' , 'rb')
-    X = pickle.load(pkl_file)
-    pkl_file.close()
+    #open field in pickle file
+    with open(file_name_fields + '_in.pkl', 'rb') as f:
+        fields_in = pickle.load(f)
 
-    pkl_file = open(file_name_fields + '_out.pkl' , 'rb')
-    Y = pickle.load(pkl_file)
-    pkl_file.close()
+    #open field out pickle file
+    with open(file_name_fields + '_out.pkl', 'rb') as f:
+        fields_out = pickle.load(f)
+    
+    #open mesh pickle file
+    with open(file_name_mesh + '_alpha.pkl' , 'rb') as f:
+        mesh = pickle.load(f)
 
-    pkl_file = open(file_name_mesh + '.pkl' , 'rb')
-    mesh = pickle.load(pkl_file)
-    pkl_file.close()
+    #open refractive index pickle file
+    with open(file_name_mesh + '_ref_ind.pkl' , 'rb') as f:
+        ref_index = pickle.load(f)
 
     #number of layers in model
     layers = int(time_steps)
@@ -68,4 +72,4 @@ def GET_FIELD_DATA(file_address_fields , file_address_mesh):
     n_y = int(space_steps_y)
     n_z = int(space_steps_z)
 
-    return X , Y , layers , mask_start , mask_end , n_x , n_y , n_z , mesh
+    return fields_in , fields_out , layers , mask_start , mask_end , n_x , n_y , n_z , mesh , file_id , ref_index
