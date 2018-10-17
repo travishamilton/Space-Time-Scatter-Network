@@ -4,6 +4,7 @@ import os
 
 from files import *
 from weights import *
+from layers import *
 
 import pickle
 
@@ -20,22 +21,23 @@ tf.set_random_seed(7)	# seed Tensorflow random numebr generator as well
 # ----------------------- Simulation Constants ------------------#
 n_c = 12    # number of field components per node
 n_w = 1     # number of weights per node
+initial_weight = 1 # initial weight value in masked region
 
 #------------------------ Read in Data --------------------------#
 with tf.name_scope('read_data'):
-    file_address = "C:/Users/travi/Documents/Northwestern/STSN/forward_model/field_data/"
-    in_field , out_field , layers , mask_start , mask_end , n_x , n_y , n_z = GET_FIELD_DATA(file_address)
-
-    sample_n, feat_n = in_field.shape	# sampN: number of training samples, featN: features per sample
+    file_address_fields = "Z:/users/Maria/STSN_new/field_data/"
+    file_address_mesh = "Z:/users/Maria/STSN_new/mesh_data/"
+    
+    in_field , out_field , layers , mask_start , mask_end , n_x , n_y , n_z , mesh , file_id , ref_index = GET_DATA(file_address_fields , file_address_mesh)
 
 #------------------------ Create Weights ------------------------#
 with tf.name_scope('create_weights'):
-    weight_tens = WEIGHT_CREATION(mask_start, mask_end, layers, data_type, n_x, n_y, n_z , n_w)
+    weights_tens , weights_train_tens = WEIGHT_CREATION(mask_start, mask_end, data_type, n_x, n_y, n_z , n_w, initial_weight)
 
 #--------------------------- Placeholder Instantiation --------------------------#
 with tf.name_scope('instantiate_placeholders'):
-    in_field_tens = tf.placeholder(dtype = data_type, shape = [n_x,n_y,n_z])
-    out_field_tens = tf.placeholder(dtype = data_type, shape = [n_x,n_y,n_z])
+    in_field_tens = tf.placeholder(dtype = data_type, shape = [n_x,n_y,n_z,n_c,layers])
+    out_field_tens = tf.placeholder(dtype = data_type, shape = [n_x,n_y,n_z,n_c])
 
 #--------------------------- Cost Function Definition --------------------------#
 # compute least squares cost for each sample and then average out their costs
@@ -43,9 +45,9 @@ print("Building Cost Function (Least Squares) ... ... ...")
 
 with tf.name_scope('cost_function'):
     
-    pre_out_field_tens = PROPAGATE(in_field_tens,mesh,n_c,weights_tens,layers,n_x,n_y,n_z,n_w) # prediction function
+    pre_out_field_tens = PROPAGATE(in_field_tens,mesh,weights_tens,layers,n_w) # prediction function
     
-    least_squares = tf.norm(pre_out_field_tens-out_field_tens, ord=2,name='least_squre')**2 	#
+    least_squares = tf.norm(pre_out_field_tens[:,:,:,:,layers-1]-out_field_tens, ord=2,name='least_squre')**2 	#
 
 print("Done!\n")
 
@@ -86,10 +88,10 @@ with tf.Session(config=tf.ConfigProto(gpu_options=tf.GPUOptions(allow_growth=Tru
     print("")
 
     print("--------- Starting Training ---------\n")
-
+	
     train_writer = tf.summary.FileWriter('/STSN/training summaries', sess.graph)
     tf.global_variables_initializer().run()
-    
+	
     for i in range(1, epochs+1):
 
         # run X and Y dynamically into the network per iteration and add runtime data to tensorboard summaries
@@ -97,9 +99,10 @@ with tf.Session(config=tf.ConfigProto(gpu_options=tf.GPUOptions(allow_growth=Tru
         run_metadata = tf.RunMetadata()
         _,loss_value = sess.run([train_op, least_squares], feed_dict = {in_field_tens: in_field, out_field_tens: out_field},options=run_options, run_metadata=run_metadata)
         train_writer.add_run_metadata(run_metadata,'epoch '+str(i))
+
         # perform clipping 
-        #with tf.name_scope('clip'):
-         #   sess.run(clip_op)
+        with tf.name_scope('clip'):
+            sess.run(clip_op)
 
         print('Loss: ',loss_value)
 
@@ -111,7 +114,5 @@ with tf.Session(config=tf.ConfigProto(gpu_options=tf.GPUOptions(allow_growth=Tru
             endCondition = '_belowLossTolerance_epoch' + str(i)
             print(endCondition)
             break
-
-
 
 merged = tf.summary.merge_all()
