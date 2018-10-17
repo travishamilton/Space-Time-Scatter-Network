@@ -44,10 +44,10 @@ with tf.name_scope('instantiate_placeholders'):
 print("Building Cost Function (Least Squares) ... ... ...")
 
 with tf.name_scope('cost_function'):
-    
-    pre_out_field_tens = PROPAGATE(in_field_tens,mesh,weights_tens,layers,n_w) # prediction function
-    
-    least_squares = tf.norm(pre_out_field_tens[:,:,:,:,layers-1]-out_field_tens, ord=2,name='least_squre')**2 	#
+    with tf.name_scope('propagate')
+    	pre_out_field_tens = PROPAGATE(in_field_tens,mesh,weights_tens,layers,n_w) # prediction function
+    with tf.name_scope('least squares')
+    	least_squares = tf.norm(pre_out_field_tens[:,:,:,:,layers-1]-out_field_tens, ord=2,name='least_squre')**2 	#
 
 print("Done!\n")
 
