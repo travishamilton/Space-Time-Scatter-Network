@@ -200,11 +200,11 @@ def SCATTER(weight_tens,a1,a2,a3,a4,a5,a6,filter_d_tens,filter_b_tens,ones_tens,
     return scatter_tensor
 
 # -------------------------- Propagation Operation ------------------------#
-def PROPAGATE(field_in_tens,mesh,n_c,weight_tens,n_t,n_w):
+def PROPAGATE(field_in_tens,mesh,weight_tens,n_t,n_w):
     #propagte the fields in STSN
     
     #get shape of field
-    n_x,,n_y,n_z,_,_ = tf.shape(field_in_tens)
+    n_x,,n_y,n_z,n_c,_ = tf.shape(field_in_tens)
     
     #produce constant tensors for scatter and transfer operations
     a1,a2,a3,a4,a5,a6,filter_d_tens,filter_b_tens,ones_tens,beta1_tens,beta2_tens = CONSTANT_TENSORS(mesh,n_c)
