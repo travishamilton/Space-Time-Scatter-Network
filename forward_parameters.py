@@ -64,17 +64,19 @@ def REFRACTIVE_INDEX(n_i,n_j,n_k,distribution_type):
 
     #select distribution type
     if distribution_type == 'cylinder':
-        radius = n_i//8
+        radius = 15
         n_cylinder = 1.5
         center = np.array([n_i//2,n_j//2,n_k//2],dtype = int)
         n = MAKE_CYLINDER(radius,center,n,n_cylinder)
 
-    if distribution_type == 2:
+    if distribution_type == 'waveguide':
+        half = 15
+        n_waveguide = 2
         for i in range(n_i):
             for j in range(n_j):
                 for k in range(n_k):
-                    if i > n_i//2:
-                        n[i,j,k,0] = 1.1
+                    if j > n_j//2 - half and j < n_j//2 + half:
+                        n[:,j,k,0] = n_waveguide
 
     if distribution_type == 3:
         for i in range(n_i):

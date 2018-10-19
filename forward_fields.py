@@ -43,14 +43,14 @@ def ADMITTANCE(n,alpha):
     admittance = 1/impedance
 
     return admittance
-
+ 
 def TENSORIZE(field_vector,n_i,n_j,n_k,n_c):
 
     field_tensor = np.reshape(field_vector,(n_i,n_j,n_k,n_c))
 
     return field_tensor
     
-def TIME_SOURCE(polarization,n_c,n_t,wavelength,full_width_half_maximum,n,alpha,location):
+def TIME_SOURCE(polarization,n_c,n_t,wavelength,full_width_half_maximum,n,alpha,location,injection_axis,injection_direction):
     #produces the time source for a Gaussian wave packet
     #polarization: gives the polarization direction of the point source - int, shape(1,)
     #n_c: number of scatter components - int, shape(1,)
@@ -60,11 +60,13 @@ def TIME_SOURCE(polarization,n_c,n_t,wavelength,full_width_half_maximum,n,alpha,
     #n: refractive index distribution for each spatial location (i,j,k) - np.array float, shape(n_i,n_j,n_k,1)
     #alpha: ratio of space/time steps in units of c - np.array float, shape(n_i,n_j,n_k,3)
     #location: gives the location (i,j,k) of the source - tuple int, shape (3,)
+    #injection_axis: t
 
     #get normalized capacitance
     location_i = location[0]
     location_j = location[1]
     location_k = location[2]
+
     normalized_capacitance = NORMALIZED_CAPACITANCE(alpha[location_i,location_j,location_k,:],n[location_i,location_j,location_k,:])
 
     #time
@@ -90,15 +92,18 @@ def TIME_SOURCE(polarization,n_c,n_t,wavelength,full_width_half_maximum,n,alpha,
 
                 #non-equal direction/polarization components only
                 if not direction == polarization:
-                    #get the scatter component for a given polarization,direction and polarity
-                    c = INDEX_2_COMPONENT(direction,polarization,polarity)
 
-                    time_source[t,c] = voltage[t]/(4*normalized_capacitance[direction,polarization])
-                    #time_source[t,c] = 1
+                    if direction == injection_axis:
+                        if polarity == injection_direction:
+                            #get the scatter component for a given polarization,direction and polarity
+                            c = INDEX_2_COMPONENT(direction,polarization,polarity)
+
+                            time_source[t,c] = voltage[t]/(4*normalized_capacitance[direction,polarization])
+                            #time_source[t,c] = 1
 
     return time_source
 
-def POINT_SOURCE(location,alpha,n_c,n_t,n,polarization,wavelength,full_width_half_maximum):
+def POINT_SOURCE(location,alpha,n_c,n_t,n,polarization,wavelength,full_width_half_maximum,injection_axis,injection_direction):
     #produces a dipole point source at a given location and polarization
     #location: gives the location (i,j,k) of the source - tuple int, shape (3,)
     #alpha: ratio of space/time steps in units of c - np.array float, shape(n_i,n_j,n_k,3)
@@ -117,17 +122,126 @@ def POINT_SOURCE(location,alpha,n_c,n_t,n,polarization,wavelength,full_width_hal
 
     #initilize sources
     source_space = np.zeros((n_i,n_j,n_k,n_c),dtype = float)
-    source_time = TIME_SOURCE(polarization,n_c,n_t,wavelength,full_width_half_maximum,n,alpha,location)
+    source_time = TIME_SOURCE(polarization,n_c,n_t,wavelength,full_width_half_maximum,n,alpha,location,injection_axis,injection_direction)
     source_space_time = np.zeros((n_i*n_j*n_k*n_c,n_t),dtype = float)
 
     #build space-time source
     for t in range(n_t):
 
-        source_space[i_location,:,k_location,:] = source_time[t,:]
+        source_space[i_location,j_location,k_location,:] = source_time[t,:]
 
         source_space_time[:,t] = VECTORIZE(source_space)
 
     return source_space_time , source_time
+
+def MODE_SHAPE(full_width_half_maximum,n_m,center):
+    # creates the transverse shape of the mode
+    # full_width_half_maximum: the full width at half maximum of the mode
+    # n_m: number of points used to define the mode
+    # center: center of the mode
+
+    x = np.arange(0,n_m,1)
+    sigma = full_width_half_maximum / 2.35482
+    mode_shape = np.exp(-(x-center)**2/(2*sigma**2))
+
+    plt.figure(101)
+    plt.plot(mode_shape)
+
+    return mode_shape
+
+def MODE_SOURCE(center,injection_axis,alpha,n_c,n_t,n,polarization,wavelength,full_width_half_maximum,full_width_half_maximum_mode):
+    #produces a mode source
+    # center: the center location of the plane wave
+    # injection_axis: the axis direction in which the plane wave travels
+    #alpha: ratio of space/time steps in units of c - np.array float, shape(n_i,n_j,n_k,3)
+    #n_c: number of scatter components - int, shape(1,)
+    #n_t: number of time steps - int, shape(1,)
+    #n: refractive index distribution for each spatial location (i,j,k) - np.array float, shape(n_i,n_j,n_k,1)
+    #polarization: gives the polarization direction of the point source - int, shape(1,)
+    #wavelength: number of points used to define one wavelength - int, shape(1,)
+    #full_width_half_maximum: full width at half maximum in the time domain - int, shape(1,)
+    #full_width_half_maximum_mode: full width at half maximum for the transverse mode - int, shape(1,)
+
+    n_x,n_y,n_z,_ = np.shape(alpha)
+
+    #initilize sources
+    source_space_time = np.zeros((n_x*n_y*n_z*n_c,n_t),dtype = float)
+
+    
+    # find x and y axis index values corresponding to the line source location
+    if injection_axis == 0:
+
+        #get mode shape
+        mode_shape = MODE_SHAPE(full_width_half_maximum_mode,n_y,center[1])
+
+        for y in range(n_y): 
+
+            location = (center[0],y,0)
+            
+            source_space_time_tmp , source_time = POINT_SOURCE(location,alpha,n_c,n_t,n,polarization,wavelength,full_width_half_maximum,injection_axis)
+            source_space_time = mode_shape[y]*source_space_time_tmp + source_space_time
+
+
+    elif injection_axis == 1:
+
+        #get mode shape
+        mode_shape = MODE_SHAPE(full_width_half_maximum_mode,n_x,center[0])
+
+        for x in range(n_x): 
+
+            location = (x,center[1],0)
+            
+            source_space_time_tmp , source_time = POINT_SOURCE(location,alpha,n_c,n_t,n,polarization,wavelength,full_width_half_maximum)
+            source_space_time = mode_shape[x]*source_space_time_tmp + source_space_time
+
+    else:
+        print('WARNING: injection_axis value is not recognized by LINE_SOURCE function')
+
+    return source_space_time , source_time
+
+def LINE_SOURCE(center,injection_axis,alpha,n_c,n_t,n,polarization,wavelength,full_width_half_maximum,injection_direction):
+    #produces a mode source
+    # center: the center location of the plane wave
+    # injection_axis: the axis direction in which the plane wave travels
+    #alpha: ratio of space/time steps in units of c - np.array float, shape(n_i,n_j,n_k,3)
+    #n_c: number of scatter components - int, shape(1,)
+    #n_t: number of time steps - int, shape(1,)
+    #n: refractive index distribution for each spatial location (i,j,k) - np.array float, shape(n_i,n_j,n_k,1)
+    #polarization: gives the polarization direction of the point source - int, shape(1,)
+    #wavelength: number of points used to define one wavelength - int, shape(1,)
+    #full_width_half_maximum: full width at half maximum in the time domain - int, shape(1,)
+    #full_width_half_maximum_mode: full width at half maximum for the transverse mode - int, shape(1,)
+
+    n_x,n_y,n_z,_ = np.shape(alpha)
+
+    #initilize sources
+    source_space_time = np.zeros((n_x*n_y*n_z*n_c,n_t),dtype = float)
+
+    
+    # find x and y axis index values corresponding to the line source location
+    if injection_axis == 0:
+
+        for y in range(n_y): 
+
+            location = (center[0],y,0)
+            
+            source_space_time_tmp , source_time = POINT_SOURCE(location,alpha,n_c,n_t,n,polarization,wavelength,full_width_half_maximum,injection_axis,injection_direction)
+            source_space_time = np.roll(source_space_time_tmp,0,axis = 1) + source_space_time
+
+    elif injection_axis == 1:
+
+        for x in range(n_x): 
+
+            location = (x,center[1],0)
+            
+            source_space_time_tmp , source_time = POINT_SOURCE(location,alpha,n_c,n_t,n,polarization,wavelength,full_width_half_maximum,injection_axis,injection_direction)
+            source_space_time = np.roll(source_space_time_tmp,0,axis = 1) + source_space_time
+
+    else:
+        print('WARNING: injection_axis value is not recognized by LINE_SOURCE function')
+
+    return source_space_time , source_time
+
 
 def SCATTER_2_ELECTRIC_LINK_LINES(scatter_field_vector,n_i,n_j,n_k,n_c,n,alpha):
 
@@ -240,3 +354,22 @@ def SCATTER_2_ELECTRIC_NODES(scatter_field_vector,n_c,n,alpha):
 
     
     return E_0,E_1,E_2
+
+def FIELD_ENERGY(E_0,E_1,E_2,n,mask):
+    # determines the field energy out side the masked region relative to the total energy
+    # E_0: electric field polarizedin the 0th direction - shape(n_x,n_y,n_z)
+    # E_1: electric field polarizedin the 1st direction - shape(n_x,n_y,n_z)
+    # E_2: electric field polarizedin the 2nd direction - shape(n_x,n_y,n_z)
+    # n: refractive index distribuiton - shape(n_x,n_y,n_z)
+    # mask: smallest and largest coordinates of masked region - shape(3,3)
+
+    E_squared_total = E_0**2 + E_1**2 + E_2**2
+    E_squared_total = E_2**2
+    E_squared_masked = E_squared_total
+    E_squared_masked[mask[0,0]:mask[1,0],mask[0,1]:mask[1,1],mask[0,2]:mask[1,2]] = 0
+
+    total_energy = np.trapz(np.trapz(np.trapz((n**2)*E_squared_total,axis = 0),axis = 0),axis = 0)
+    masked_energy = np.trapz(np.trapz(np.trapz((n**2)*E_squared_masked,axis = 0),axis = 0),axis = 0)
+
+    print('The energy outside the mask accounts for ',masked_energy/total_energy)
+
