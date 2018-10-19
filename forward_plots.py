@@ -42,8 +42,10 @@ def PLOT_TIME_SOURCE(time_source,n,alpha,fig_num):
         electric2_time_source[t] = np.squeeze(electric2_time_source_tmp)
 
     plt.figure(fig_num)
-    plt.plot(np.arange(0,n_t,1),electric0_time_source ,np.arange(0,n_t,1), electric1_time_source, np.arange(0,n_t,1), electric2_time_source)
+    plt.plot(np.arange(0,n_t,1),electric0_time_source ,'o',np.arange(0,n_t,1), electric1_time_source,'-*', np.arange(0,n_t,1), electric2_time_source)
     plt.legend(('E0', 'E1', 'E2'))
+
+
 
 def PLOT_VIDEO(scatter_field_vector_time,n_c,n,alpha):
 
@@ -70,6 +72,33 @@ def PLOT_VIDEO(scatter_field_vector_time,n_c,n,alpha):
     ani.save("foward_movie.mp4")
 
     plt.show()
+
+def PLOT_RESULTS(E0,E1,E2,n,fig_nums):
+    #plot the last time step electric field and refractive index distribuiton.
+
+    plt.figure(fig_nums[0])
+    plt.imshow(E2[:,:,0])
+    plt.title('E2')
+    plt.colorbar()
+
+    plt.figure(fig_nums[1])
+    plt.imshow(E1[:,:,0])
+    plt.title('E1')
+    plt.colorbar()
+
+    plt.figure(fig_nums[2])
+    plt.imshow(E0[:,:,0])
+    plt.title('E0')
+    plt.colorbar()
+
+    plt.figure(fig_nums[3])
+    plt.imshow(n[:,:,0,0])
+    plt.title('Refractive Index')
+    plt.colorbar()
+
+    plt.figure(1010)
+    plt.plot(E2[5,:,0])
+    plt.title('E2 - Cut')
 
 
     
