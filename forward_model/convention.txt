@@ -1,2 +1,0 @@
-variables: lower_case_with_underscores
-function names: UPPER_CASE_WITH_UNDERSCORES
