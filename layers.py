@@ -4,6 +4,75 @@ import pickle
 
 data_type = np.float32
 
+# ---------------------- Index Assignment -------------------------------#
+def INDEX_2_COMPONENT(i,j,s):
+    # convert direction, polarization and polarity index to field component
+    # i - direction, int 
+    # j - polarization, int
+    # s - polarity
+    #
+    # c - scatter field component
+
+    if i == 1 and j == 0 and s == 0:
+        c = 0
+    if i == 1 and j == 0 and s == 1:
+        c = 11
+    if i == 2 and j == 0 and s == 0:
+        c = 1
+    if i == 2 and j == 0 and s == 1:
+        c = 8
+    if i == 0 and j == 1 and s == 0:
+        c = 2
+    if i == 0 and j == 1 and s == 1:
+        c = 10
+    if i == 2 and j == 1 and s == 0:
+        c = 3
+    if i == 2 and j == 1 and s == 1:
+        c = 7
+    if i == 1 and j == 2 and s == 0:
+        c = 4
+    if i == 1 and j == 2 and s == 1:
+        c = 6
+    if i == 0 and j == 2 and s == 0:
+        c = 5
+    if i == 0 and j == 2 and s == 1:
+        c = 9
+
+    return c
+
+def COMPONENT_2_INDEX(c):
+    # convert scatter field component to direction, polarizaiton and polarity index
+    # c - scatter field component
+    #
+    # i - direction, int 
+    # j - polarization, int
+    # s - polarity
+    
+    if c == 0 or c == 11:
+        i = 1
+        j = 0
+    if c == 1 or c == 8:
+        i = 2
+        j = 0
+    if c == 2 or c == 10:
+        i = 0
+        j = 1
+    if c == 3 or c == 7:
+        i = 2
+        j = 1
+    if c == 4 or c == 6:
+        i = 1
+        j = 2
+    if c == 5 or c == 9:
+        i = 0
+        j = 2
+    if c <= 5:
+        s = 0
+    else:
+        s = 1
+
+    return i,j,s
+
 # ---------------------- Tensors and Tensor Operations ------------------#
 def CONSTANT_MATRICES():
     #produces the matrices of constants used to construct the scatter tensor
@@ -85,7 +154,7 @@ def MESH_INDEX(c):
     return index_d[c,:] , index_b[c,:]
 
 def CONSTANT_TENSORS(mesh,n_c):
-    #produces the constant tensors used to construct the scatter tensor
+    #produces the constant tensors used to construct the scatter tensor and boundary tensor
     #mesh: contains the alpha mesh variables (del_space/del_time/c0) in each direction - numpy.array shape(n_x,n_y,n_z,3)
     #n_c: number of field components
 
@@ -94,14 +163,17 @@ def CONSTANT_TENSORS(mesh,n_c):
     #spatial parameters
     n_x,n_y,n_z,_ = np.shape(mesh)
 
-    #initialize constant tensors
+    #initilize boundary tensor
+    boundary = np.ones((n_x,n_y,n_z,n_c),dtype = data_type)
+
+    #initilize constant tensors
     a1 = np.zeros((n_x,n_y,n_z,n_c,n_c), dtype = data_type)
     a2 = np.zeros((n_x,n_y,n_z,n_c,n_c), dtype = data_type)
     a3 = np.zeros((n_x,n_y,n_z,n_c,n_c), dtype = data_type)
     a4 = np.zeros((n_x,n_y,n_z,n_c,n_c), dtype = data_type)
     a5 = np.zeros((n_x,n_y,n_z,n_c,n_c), dtype = data_type)
     a6 = np.zeros((n_x,n_y,n_z,n_c,n_c), dtype = data_type)
-
+  
     beta1_tens = np.zeros((n_x,n_y,n_z,n_c,n_c), dtype = data_type)
     beta2_tens = np.zeros((n_x,n_y,n_z,n_c,n_c), dtype = data_type)
 
@@ -110,10 +182,14 @@ def CONSTANT_TENSORS(mesh,n_c):
 
     ones_tens = np.zeros((n_x,n_y,n_z,n_c,n_c), dtype = data_type)
 
-    #build constant tensors based of relationship between mesh index and field component c
+    #build constant tensors based on relationship between mesh index and field component c
     for x in range(n_x):
         for y in range(n_y):
             for z in range(n_z):
+
+                #build boundary tensor
+                if y == 0 or x == n_y - 1:
+                      boundary[x,y,z,:] = np.zeros(n_c,dtype = data_type)
 
                 #build filter and ones tensors
                 filter_d_tens[x,y,z,:,:] = filter_d_matrix
@@ -144,13 +220,15 @@ def CONSTANT_TENSORS(mesh,n_c):
                         a5[x,y,z,c1,c2] = 2 * mesh[x,y,z,jb]**2 * mesh[x,y,z,kb]**2 
                         a6[x,y,z,c1,c2] = 2 * mesh[x,y,z,ib]**2 * mesh[x,y,z,kb]**2 
 
-    return a1,a2,a3,a4,a5,a6,filter_d_tens,filter_b_tens,ones_tens,beta1_tens,beta2_tens
+    return a1,a2,a3,a4,a5,a6,filter_d_tens,filter_b_tens,ones_tens,beta1_tens,beta2_tens,boundary
 
 # ---------------------- Transfer Operation -----------------------------#
 def TRANSFER_OPERATION(field):
-    #transfers field values to the next node and reverses polarity
+    #transfers field components for all points in space
+    #field: the field to be transfered - shape(n_x,n_y,n_z,n_c)
+
     with tf.name_scope("transfer_op"):
-        #shift values in field tensor over one along a given axis according to c-index
+        #explain shifts here
         tmp0 = tf.manip.roll(field[:,:,:,0],shift=-1,axis=1)
         tmp1 = tf.manip.roll(field[:,:,:,1],shift=-1,axis=2)
         tmp2 = tf.manip.roll(field[:,:,:,2],shift=-1,axis=0)
@@ -163,20 +241,16 @@ def TRANSFER_OPERATION(field):
         tmp9 = tf.manip.roll(field[:,:,:,9],shift=1,axis=0)
         tmp10 = tf.manip.roll(field[:,:,:,10],shift=1,axis=0)
         tmp11 = tf.manip.roll(field[:,:,:,11],shift=1,axis=1)
-        
-        #re-assign c-index to match new polarity
+
         transferred_field = tf.stack([tmp11,tmp8,tmp10,tmp7,tmp6,tmp9,tmp4,tmp3,tmp1,tmp5,tmp2,tmp0],axis=3,name="stack")
 
         return transferred_field
+        
 # ---------------------- Scatter Tensor Generation ----------------------#
-
-def SCATTER(weight_tens,a1,a2,a3,a4,a5,a6,filter_d_tens,filter_b_tens,ones_tens,n_c,n_w,beta1_tens,beta2_tens):
+def SCATTER(weight_tens,a1,a2,a3,a4,a5,a6,filter_d_tens,filter_b_tens,ones_tens,n_c,n_x,n_y,n_z,n_w,beta1_tens,beta2_tens):
     #produces the scatter tensor to operate on the field tensor
     #weight_tens: weight tensor - shape (layers,n_x,n_y,n_z,n_w)
     #S: scatter tensor - shape (n_x,n_y,n_z,n_c,n_c)
-    
-    #get shape of field
-    _,n_x,n_y,n_z = tf.shape(weight_tens)
 
     #assign a weight to each field component
     w = tf.reshape(weight_tens,[n_x,n_y,n_z,n_w,n_w])
@@ -200,22 +274,75 @@ def SCATTER(weight_tens,a1,a2,a3,a4,a5,a6,filter_d_tens,filter_b_tens,ones_tens,
     return scatter_tensor
 
 # -------------------------- Propagation Operation ------------------------#
-def PROPAGATE(field_in_tens,mesh,weight_tens,n_t,n_w):
-    #propagte the fields in STSN
-    
-    #get shape of field
-    n_x,,n_y,n_z,n_c,_ = tf.shape(field_in_tens)
-    
+def PROPAGATE_1D(field_in_tens,mesh,n_c,weight_tens,n_t,n_w):
+    # propagte the fields in STSN assuming a 1D simulation
+    # field_in_tens: input field tensor containing the field at all points in space and time - tf.constant tf.float##, shape(n_x,n_y,n_z,n_c,n_t)
+    # mesh: holds the mesh length values for all space - np.array int, shape(n_x,n_y,n_z,3)
+    # n_c: number of field componentes - int, shape(1)
+    # weight_tens: weights in all regions - tf.Variable tf.float##, shape(n_x,n_y,n_z,n_w)
+    # n_t: number of time steps - int, shape(1,)
+    # n_w: number of weight steps - int, shape(1,)
+
+    #spatial steps
+    n_x,n_y,n_z,_ = np.shape(mesh)
+
     #produce constant tensors for scatter and transfer operations
-    a1,a2,a3,a4,a5,a6,filter_d_tens,filter_b_tens,ones_tens,beta1_tens,beta2_tens = CONSTANT_TENSORS(mesh,n_c)
+    a1,a2,a3,a4,a5,a6,filter_d_tens,filter_b_tens,ones_tens,beta1_tens,beta2_tens,boundary = CONSTANT_TENSORS(mesh,n_c)
 
     #create scatter tensor
-    scatter_tensor = SCATTER(weight_tens,a1,a2,a3,a4,a5,a6,filter_d_tens,filter_b_tens,ones_tens,n_c,n_w,beta1_tens,beta2_tens)
+    scatter_tensor = SCATTER(weight_tens,a1,a2,a3,a4,a5,a6,filter_d_tens,filter_b_tens,ones_tens,n_c,n_x,n_y,n_z,n_w,beta1_tens,beta2_tens)
     
     #keep field_out_tens_tmp a rank 4 tensor
     field_out_tens_tmp = 0*field_in_tens[:,:,:,:,0]
 
-    #initialize field_out_tens
+    #initilize field_out_tens
+    source = field_in_tens[:,:,:,:,0]
+    field_out_tens_tmp = source + field_out_tens_tmp
+
+    field_out_tens_tmp = tf.einsum('ijkm,ijknm->ijkn',field_out_tens_tmp,scatter_tensor)
+    field_out_tens_tmp = TRANSFER_OPERATION(field_out_tens_tmp)
+
+    field_out_tens_tmp = tf.reshape(field_out_tens_tmp,(n_x,n_y,n_z,n_c,1))
+    field_out_tens = field_out_tens_tmp
+    field_out_tens_tmp = tf.reshape(field_out_tens_tmp,(n_x,n_y,n_z,n_c))
+
+    #perform scatter operation
+    for t in np.arange(1,n_t):
+        source = field_in_tens[:,:,:,:,t]
+        field_out_tens_tmp = source + field_out_tens_tmp
+
+        field_out_tens_tmp = tf.einsum('ijkm,ijknm->ijkn',field_out_tens_tmp,scatter_tensor)
+        field_out_tens_tmp = tf.multiply(field_out_tens_tmp,boundary)
+        field_out_tens_tmp = TRANSFER_OPERATION(field_out_tens_tmp)
+
+        field_out_tens_tmp = tf.reshape(field_out_tens_tmp,(n_x,n_y,n_z,n_c,1))
+        field_out_tens = tf.concat( [field_out_tens,field_out_tens_tmp] , 4 )
+        field_out_tens_tmp = tf.reshape(field_out_tens_tmp,(n_x,n_y,n_z,n_c))
+
+    return field_out_tens,boundary
+
+def PROPAGATE(field_in_tens,mesh,n_c,weight_tens,n_t,n_w):
+    # propagte the fields in STSN assuming a 1D simulation
+    # field_in_tens: input field tensor containing the field at all points in space and time - tf.constant tf.float##, shape(n_x,n_y,n_z,n_c,n_t)
+    # mesh: holds the mesh length values for all space - np.array int, shape(n_x,n_y,n_z,3)
+    # n_c: number of field componentes - int, shape(1)
+    # weight_tens: weights in all regions - tf.Variable tf.float##, shape(n_x,n_y,n_z,n_w)
+    # n_t: number of time steps - int, shape(1,)
+    # n_w: number of weight steps - int, shape(1,)
+
+    #spatial steps
+    n_x,n_y,n_z,_ = np.shape(mesh)
+
+    #produce constant tensors for scatter and transfer operations
+    a1,a2,a3,a4,a5,a6,filter_d_tens,filter_b_tens,ones_tens,beta1_tens,beta2_tens,_ = CONSTANT_TENSORS(mesh,n_c)
+
+    #create scatter tensor
+    scatter_tensor = SCATTER(weight_tens,a1,a2,a3,a4,a5,a6,filter_d_tens,filter_b_tens,ones_tens,n_c,n_x,n_y,n_z,n_w,beta1_tens,beta2_tens)
+    
+    #keep field_out_tens_tmp a rank 4 tensor
+    field_out_tens_tmp = 0*field_in_tens[:,:,:,:,0]
+
+    #initilize field_out_tens
     source = field_in_tens[:,:,:,:,0]
     field_out_tens_tmp = source + field_out_tens_tmp
 
@@ -233,12 +360,31 @@ def PROPAGATE(field_in_tens,mesh,weight_tens,n_t,n_w):
 
         field_out_tens_tmp = tf.einsum('ijkm,ijknm->ijkn',field_out_tens_tmp,scatter_tensor)
         field_out_tens_tmp = TRANSFER_OPERATION(field_out_tens_tmp)
-        
 
         field_out_tens_tmp = tf.reshape(field_out_tens_tmp,(n_x,n_y,n_z,n_c,1))
         field_out_tens = tf.concat( [field_out_tens,field_out_tens_tmp] , 4 )
         field_out_tens_tmp = tf.reshape(field_out_tens_tmp,(n_x,n_y,n_z,n_c))
 
     return field_out_tens
+
+def MASK(mask_start,mask_end,field_tens,n_x,n_y,n_z,n_c,data_type):
+
+    mask_start_x = mask_start[0]
+    mask_start_y = mask_start[1]
+    mask_start_z = mask_start[2]
+
+    mask_end_x = mask_end[0]
+    mask_end_y = mask_end[1]
+    mask_end_z = mask_end[2]
+
+    mask = np.ones((n_x,n_y,n_z,n_c),dtype = data_type)
+    mask[mask_start_x:mask_end_x+1,mask_start_y:mask_end_y+1,mask_start_z:mask_end_z+1,:] = np.zeros((mask_end_x-mask_start_x + 1,mask_end_y-mask_start_y + 1,mask_end_z-mask_start_z + 1,n_c),dtype = data_type)
+
+    mask_field_tens = tf.multiply(mask,field_tens)
+
+    return mask_field_tens
+
+
+
 
 
