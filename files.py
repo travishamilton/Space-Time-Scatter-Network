@@ -1,6 +1,12 @@
 import numpy as np
 import pickle
 
+def FILE_ID(n_t,n_i,n_j,n_k,scatter_type,mask,time_changes):
+
+    file_id = "timeSteps_" + str(n_t) + "_spaceSteps_" + str(n_i) + "_" + str(n_j) + "_" + str(n_k) + "_scatterType_" + scatter_type + "_maskStart_" + str(mask[0,0]) + "_" + str(mask[0,1]) + "_" + str(mask[0,2]) + "_maskEnd_" + str(mask[1,0]) + "_" + str(mask[1,1]) + "_" + str(mask[1,2]) + "_timeChanges_" + str(time_changes)
+
+    return file_id
+
 def GET_DATA(file_address_fields , file_address_mesh):
     #gets the input/output scatter field based on user input
     #file_address: location of field data
@@ -24,16 +30,16 @@ def GET_DATA(file_address_fields , file_address_mesh):
     # mask_end_z = input("End of mask in z: ")
     # time_changes = input("Number of time changes: ")
 
-    time_steps = '100'
-    space_steps_x = '70'
-    space_steps_y = '70'
+    time_steps = '500'
+    space_steps_x = '100'
+    space_steps_y = '100'
     space_steps_z = '1'
-    scatter_type = 'none'
-    mask_start_x = '25'
-    mask_start_y = '25'
+    scatter_type = 'cylinder'
+    mask_start_x = '39'
+    mask_start_y = '39'
     mask_start_z = '0'
-    mask_end_x = '45'
-    mask_end_y = '45'
+    mask_end_x = '61'
+    mask_end_y = '61'
     mask_end_z = '0'
     time_changes = '0'
 
