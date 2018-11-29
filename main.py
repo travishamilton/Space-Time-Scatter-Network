@@ -129,10 +129,13 @@ def INVERSE_1D(n_c,n_w,initial_weight,n_x,n_y,n_z,n_t,time_changes,scatter_type,
 
     #------------------------ Read in Data --------------------------#
     with tf.name_scope('read_data'):
-        file_address_fields = "C:/Users/travi/Documents/Northwestern/STSN/field_data/"
-        file_address_mesh = "C:/Users/travi/Documents/Northwestern/STSN/mesh_data/"
+        path = "Z:/users/Maria/STSN_latest/field_data/1D"
+        file_id = "space_steps_" + str(n_x) +"_" + str(n_y) + "_" + str(n_z) + "_time_steps_" + str(n_t) + "_tc_" + str(time_changes) + "_st_" + scatter_type + "_mask_start_" + str(mask[0,0]) + "_" + str(mask[0,1]) + "_" + str(mask[0,2]) + "_mask_stop_" + str(mask[1,0]) + "_" + str(mask[1,1]) + "_" + str(mask[1,2])
+        layers = n_t
+        mask_start = mask[0,:]
+        mask_end = mask[1,:]
         
-        in_field , out_field , layers , mask_start , mask_end , n_x , n_y , n_z , mesh , file_id , ref_index = GET_DATA(file_address_fields , file_address_mesh)
+        fields_in , fields_out , mesh , ref_index = GET_DATA(path,file_id)
 
     #------------------------ Create Weights ------------------------#
     with tf.name_scope('create_weights'):
@@ -155,7 +158,7 @@ def INVERSE_1D(n_c,n_w,initial_weight,n_x,n_y,n_z,n_t,time_changes,scatter_type,
 
         mask_out_field_tens = MASK(mask_start,mask_end,out_field_tens,n_x,n_y,n_z,n_c,np.float32)
         
-        least_squares = tf.norm(mask_pre_out_field_tens-mask_out_field_tens, ord=2,name='least_squre')**2 	#
+        least_squares = tf.norm(mask_pre_out_field_tens-mask_out_field_tens, ord=2,name='least_squre')**2   #
 
     print("Done!\n")
 
@@ -187,19 +190,19 @@ def INVERSE_1D(n_c,n_w,initial_weight,n_x,n_y,n_z,n_t,time_changes,scatter_type,
     with tf.Session(config=tf.ConfigProto(gpu_options=tf.GPUOptions(allow_growth=True))) as sess:
         sess.run( tf.global_variables_initializer() )
 
-        print("Tensor in field:")		# show info. for in field
-        print(in_field)
+        print("Tensor in field:")       # show info. for in field
+        print(fields_in)
         print("")
 
-        print("Tensor out field: ")		# show info. for out field
-        print(out_field)
+        print("Tensor out field: ")     # show info. for out field
+        print(fields_out)
         print("")
 
         print("--------- Starting Training ---------\n")
         for i in range(1, epochs+1):
 
             # run X and Y dynamically into the network per iteration
-            _,loss_value = sess.run([train_op, least_squares], feed_dict = {in_field_tens: in_field, out_field_tens: out_field})
+            _,loss_value = sess.run([train_op, least_squares], feed_dict = {in_field_tens: fields_in, out_field_tens: fields_out})
 
             # perform clipping 
             with tf.name_scope('clip'):
