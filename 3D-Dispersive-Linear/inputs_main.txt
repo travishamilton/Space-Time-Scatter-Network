@@ -1,0 +1,28 @@
+Inputs of functions in main.py
+
+MULTIPLE_FORWARD:
+
+n_x: number of spatial parameters in the x or 0th axis direction - tf.constant ( data type: int), shape(1,)
+n_y: number of spatial parameters in the y or 1st axis direction - tf.constant ( data type: int), shape(1,)
+n_z: number of spatial parameters in the z or 2nd axis direction - tf.constant ( data type: int), shape(1,)
+n_t: number of time steps the simulation takes - tf.constant ( data type: int), shape(1,)
+del_l: the lenght of the mesh step in all three directions in units of meters - tf.constant (data type: float32), shape(1,)
+n_r: number of resonances - tf.constant (data type: int), shape(1,)
+source_par: contains the parameters relevent for making the source - list, shape(11,)
+	source_par[0] = polarization: the polarization of the source (0 - polarized in the 0th direction, 1 - 1st, 2 - 2nd) - (int), shape(3,)
+	source_par[1] = wavelength: the wavelenght of light in meters - (float32), shape(1,)
+	source_par[2] = fwhm: the full width at half maximum of the wave in seconds - (float32), shape (1,)
+	source_par[3] = location: a point the source intersects - np.array, (int), shape(3,)
+	source_par[4] = injection_axis: the axis the source travels along (0 - 0th direction, 1 - 1st, 2 - 2nd) - (int), shape(1,)
+	source_par[5] = injection_direction: the direction (either positive or negative -1/1) the source will be sent along the injection_axis - int, shape(1,)
+	source_par[6] = source_type: a string specifying the type of source used. At this time only 'Line' works but 'Mode' will come shortly.
+	source_par[7] = fwhm_mode: the full width at half maximum of the mode signal in meters - (float32) shape(1,)
+	source_par[8] = n_m: number of points used to define mode - int, shape(1,)
+	source_par[9] = center_mode: center of mode shape - int, shape(1,)
+	source_par[10] = mode_axis: the axis the mode runs across - int, shape(1,)
+mat_par: contains the parameters relevent for the material - list, shape(5,)
+	mat_par[0] = n_r: number of Lorentz dispersion resonances - (int), shape(1,)
+	mat_par[1] = inf_x_mat: the materials susceptibility at high frequency - (float32), shape(1,)
+	mat_par[2] = w_0_mat: the materials resonant frequency in rad/s for each dispersion resonance - np.array (float32), shape(n_r,)
+	mat_par[3] = damp_mat - the materials damping frequency in rad/s for each dispersion resonance - np.array (float32), shape(n_r,)
+	mat_par[4] = del_x_mat - the materials change in susceptibility for each dispersion resonance - np.array (float32), shape(n_r,)
