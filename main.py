@@ -125,110 +125,58 @@ def FORWARD(n_c,n_w,initial_weight,n_x,n_y,n_z,n_t,time_changes,scatter_type,mas
 
     plt.show()
     
-def INVERSE_1D(n_c,n_w,initial_weight,n_x,n_y,n_z,n_t,time_changes,scatter_type,mask,location,polarization,wavelength,injection_axis,injection_direction,fwhm,fwhm_mode,n_m,center_mode,mode_axis,source_type):
+def MULTIPLE_FORWARD(n_x,n_y,n_z,n_t,del_l,source_par,mat_par):
+    #performs a forward multiple Lorentz resonace simulation
+    # n_x: number of spatial parameters in the x or 0th axis direction - tf.constant (int), shape(1,)
+    # n_y: number of spatial parameters in the y or 1st axis direction - tf.constant (int), shape(1,)
+    # n_z: number of spatial parameters in the z or 2nd axis direction - tf.constant (int), shape(1,)
+    # n_t: number of time steps the simulation takes - tf.constant (int), shape(1,)
+    # del_l: the lenght of the mesh step in all three directions (m) - tf.constant (int), shape(1,)
+    # n_r: number of resonances - tf.constant (int), shape(1,)
+    # source_par: contains the parameters relevent for making the source - list, shape(11,)
+    # mat_par: contains the parameters relevent for the material - list, shape(5,)
 
-    #------------------------ Read in Data --------------------------#
-    with tf.name_scope('read_data'):
-        path = "Z:/users/Maria/STSN_latest/field_data/1D"
-        file_id = "space_steps_" + str(n_x) +"_" + str(n_y) + "_" + str(n_z) + "_time_steps_" + str(n_t) + "_tc_" + str(time_changes) + "_st_" + scatter_type + "_mask_start_" + str(mask[0,0]) + "_" + str(mask[0,1]) + "_" + str(mask[0,2]) + "_mask_stop_" + str(mask[1,0]) + "_" + str(mask[1,1]) + "_" + str(mask[1,2])
-        layers = n_t
-        mask_start = mask[0,:]
-        mask_end = mask[1,:]
-        
-        fields_in , fields_out , mesh , ref_index = GET_DATA(path,file_id)
+    #determine time step based on the criteria del_l/del_t = 2*c0
+    del_t = del_l/(2*c0)
 
-    #------------------------ Create Weights ------------------------#
-    with tf.name_scope('create_weights'):
-        weights_tens , weights_train_tens = WEIGHT_CREATION(mask_start, mask_end, data_type, n_x, n_y, n_z , n_w, initial_weight)
+    # ----------------- Simulation Parameters ---------------------- #
+    inf_x,w_0,damp,del_x = MULTIPLE_DISPERSION_PARAMETERS(n_x,n_y,n_z,mat_par[0],mat_par[1],mat_par[2],mat_par[3],mat_par[4])
+    PLOT_DISPERSION_PARAMETERS_1D(inf_x[0,:,0],w_0[0,:,0,:],damp[0,:,0,:],del_x[0,:,0,:],fig_num = [1,2])
 
-    #--------------------------- Placeholder Instantiation --------------------------#
+    # ----------------- Source ------------------------------------- #
+    v_f,time_source,e_time_source = SOURCE(n_f,n_t,del_t,del_l,n_x,n_y,n_z,source_par[0],source_par[1],source_par[2],source_par[3],source_par[4],source_par[5],source_par[6],source_par[7],source_par[8],source_par[9],source_par[10])
+    PLOT_TIME_SOURCE(v_f,time_source,e_time_source,del_l,fig_num=[4,5,6])
+
+    #--------------------------- Tensor Creation --------------------------#
     with tf.name_scope('instantiate_placeholders'):
-        in_field_tens = tf.placeholder(dtype = data_type, shape = [n_x,n_y,n_z,n_c,layers])
-        out_field_tens = tf.placeholder(dtype = data_type, shape = [n_x,n_y,n_z,n_c])
+        v_f = tf.convert_to_tensor(v_f,dtype = data_type)
 
-    #--------------------------- Cost Function Definition --------------------------#
+    #--------------------------- Graph Construction --------------------------#
     # compute least squares cost for each sample and then average out their costs
-    print("Building Cost Function (Least Squares) ... ... ...")
+    print("Building Graph ... ... ...")
 
-    with tf.name_scope('cost_function'):
+    with tf.name_scope('graph'):
         
-        pre_out_field_tens = PROPAGATE(in_field_tens,mesh,n_c,weights_tens,layers,n_w) # prediction function
+        v_i , f_time, f_final = MULTIPLE_PROPAGATE(v_f,inf_x,w_0,damp,del_x,del_t,n_c,n_t,n_f)
 
-        mask_pre_out_field_tens = MASK(mask_start,mask_end,pre_out_field_tens[:,:,:,:,layers-1],n_x,n_y,n_z,n_c,np.float32)
-
-        mask_out_field_tens = MASK(mask_start,mask_end,out_field_tens,n_x,n_y,n_z,n_c,np.float32)
-        
-        least_squares = tf.norm(mask_pre_out_field_tens-mask_out_field_tens, ord=2,name='least_squre')**2   #
-
-    print("Done!\n")
-
-    #--------------------------- Define Optimizer --------------------------#
-    print("Building Optimizer ... ... ...")
-    lr = 0.01
-    with tf.name_scope('train'):
-        train_op = tf.train.AdamOptimizer(learning_rate=lr).minimize(least_squares, var_list = [weights_train_tens])
-    with tf.name_scope('clip'):
-        clip_op = tf.assign(weights_train_tens, tf.clip_by_value(weights_train_tens, 0.25, 1.0))
     print("Done!\n")
 
     #--------------------------- Merge Summaries ---------------------------#
     merged = tf.summary.merge_all()
 
-    #--------------------------- Training --------------------------#
-    epochs = 6000
-    loss_tolerance = 1e-10
-    table = []
-
-    # saves objects for every iteration
-    fileFolder = "results/" + file_id
-
-    # if the results folder does not exist for the current model, create it
-    if not os.path.exists(fileFolder):
-            os.makedirs(fileFolder)
-
-
+    #--------------------------- Run Forward Model --------------------------#
     with tf.Session(config=tf.ConfigProto(gpu_options=tf.GPUOptions(allow_growth=True))) as sess:
         sess.run( tf.global_variables_initializer() )
 
-        print("Tensor in field:")       # show info. for in field
-        print(fields_in)
-        print("")
+        print("--------- Starting Run of Forward Model ---------\n")
 
-        print("Tensor out field: ")     # show info. for out field
-        print(fields_out)
-        print("")
+        # run the graph to determine the output field
+        f_time = sess.run(f_time)
+        f_final = sess.run(f_final)
 
-        print("--------- Starting Training ---------\n")
-        for i in range(1, epochs+1):
+        # plot results
+        PLOT_VIDEO_1D(f_time[:,:,:,source_par[0],:],del_l,fig_num = 7)
 
-            # run X and Y dynamically into the network per iteration
-            _,loss_value = sess.run([train_op, least_squares], feed_dict = {in_field_tens: fields_in, out_field_tens: fields_out})
+        PLOT_RESULTS_2(f_final[:,:,:,2],del_l,fig_num = 8)
 
-            # perform clipping 
-            with tf.name_scope('clip'):
-                sess.run(clip_op)
-
-            print('Epoch: ',i)
-            print('Loss: ',loss_value)
-
-            w = sess.run(weights_train_tens)
-
-            with open(fileFolder + '/' + str(i) + '_loss.pkl', 'wb') as f:
-
-                # Pickle loss value
-                pickle.dump(loss_value, f, pickle.HIGHEST_PROTOCOL)
-
-            with open(fileFolder + '/' + str(i) + '_trained_weights.pkl', 'wb') as f:
-
-                # Pickle loss value
-                pickle.dump(w, f, pickle.HIGHEST_PROTOCOL)
-
-            # break from training if loss tolerance is reached
-            if loss_value <= loss_tolerance:
-                endCondition = '_belowLossTolerance_epoch' + str(i)
-                print(endCondition)
-                break
-
-        plt.imshow(np.sqrt(1/w[:,:,0]))
-        plt.colorbar()
-        plt.show()
+    plt.show()
