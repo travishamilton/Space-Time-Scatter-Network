@@ -63,11 +63,11 @@ def NL_MULTIPLE_DISPERSION_PARAMETERS(n_x,n_y,n_z,n_r,inf_x_mat,w_0_mat,damp_mat
 
         #assign same values across all space
         for i in range(n_x):
-            if i <= mask_start[0] or i >= mask_end[0]:
+            if i >= mask_start[0] and i <= mask_end[0]:
                 for j in range(n_y):
-                    if j <= mask_start[1] or j >= mask_end[1]:
+                    if j >= mask_start[1] and j <= mask_end[1]:
                         for k in range(n_z):
-                            if k <= mask_start[2] or k >= mask_end[2]:
+                            if k >= mask_start[2] and k <= mask_end[2]:
                                 inf_x[i,j,k] = inf_x_mat
                                 w_0[i,j,k,:] = w_0_mat
                                 damp[i,j,k,:] = damp_mat

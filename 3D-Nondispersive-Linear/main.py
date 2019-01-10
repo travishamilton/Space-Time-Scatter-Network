@@ -177,7 +177,7 @@ def INVERSE(n_x,n_y,n_z,n_t,del_l,source_par,mat_par,train_par):
         for i in range(1, epochs+1):
 
             # run v_f dynamically into the network per iteration
-            _,loss_value,spectrum_1,spectrum_2 = sess.run([train_op, least_squares,sp_1,sp_2],  feed_dict = {v_f_tens : v_f} )
+            _,loss_value,spectrum_1,spectrum_2,weights = sess.run([train_op, least_squares,sp_1,sp_2,weights_tens],  feed_dict = {v_f_tens : v_f} )
 
             print('Epoch: ',i)
             print('Loss: ',loss_value)
@@ -185,8 +185,15 @@ def INVERSE(n_x,n_y,n_z,n_t,del_l,source_par,mat_par,train_par):
     plt.show()
 
     plt.figure(100)
-    plt.plot(np.abs(spectrum_1),label = 'freq 1')
-    plt.plot(np.abs(spectrum_2),label = 'freq 2')
+    plt.plot(np.arange(0,len(spectrum_1))*del_l*1.0e9,np.abs(spectrum_1),label = 'freq 1')
+    plt.plot(np.arange(0,len(spectrum_1))*del_l*1.0e9,np.abs(spectrum_2),label = 'freq 2')
+    plt.legend()
+    plt.title('spectrum overlap')
+    plt.ylabel('spectrum mag')
+    plt.xlabel('position (nm)')
+
+    plt.figure(101)
+    plt.plot(np.squeeze(weights))
 
     plt.show()
 

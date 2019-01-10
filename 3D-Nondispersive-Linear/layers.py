@@ -108,8 +108,8 @@ def NL_ELECTRIC_DISPERSION_OPERATORS_TRAIN(res_freq,damp,del_x,del_t,inf_x,x_nl,
     k = tf.convert_to_tensor(k)
 
     #multiply weights by sigmoid function to round them to either 1 or zero, then multiply them by the c and d coefficients
-    c = tf.einsum('ijkl,ijk->ijkl',c,tf.sigmoid(10*weights))
-    d = d*tf.sigmoid(10*weights)
+    c = tf.einsum('ijkl,ijk->ijkl',c,tf.sigmoid(100*weights))
+    d = d*tf.sigmoid(100*weights)
 
     #package operators
     sta_ope = [a,b,c,d]
@@ -318,8 +318,8 @@ def SPECTRUM_Z(f_time,del_t,n_t,freq_1,freq_2):
     return sp_1 , sp_2
 
 def TRAPZ(f,a,b,n):
-    #calculates the definite integral using the trapezoidal rule
-    # f: function values at each point - tf.constant, tf.float32, shape(n+1,)
+    #calculates the definite integral using the trapezoidal rule along the first axis
+    # f: function values - tf.constant, tf.float32, shape(n+1,n_f)
     # a: lower limit of definite integral - shape(1,)
     # b: upper limit of definite integral - shape(1,)
     # n: number of function points - shape(1,)
@@ -330,9 +330,31 @@ def TRAPZ(f,a,b,n):
     del_x = (b-a)/n
 
     #trapezoidal rule
-    output = ( del_x/2 ) * ( f[0] + f[n] + 2*tf.reduce_sum(f[1:n]) )
+    output = ( del_x/2 ) * ( f[0,:] + f[n,:] + 2*tf.reduce_sum(f[1:n,:]) , 0 )
 
     return output
+
+def OVERLAP_INTEGRAL(f_1,f_2,a,b,n):
+    # calculates the overlap integral between to frequency modes for a list of frequency pairs
+    # f_1: field 1 containing the spatial and frequency points of interest - shape(n+1,n_f)
+    # f_2: field 2 containing the spatial and frequency points of interest - shape(n+1,n_f)
+    # a: lower limit of region of interest - shape(1,)
+    # b: upper limit of region of interest - shape(1,)
+    # n: number of function points over space - shape(1,)
+    #
+    # output: normalized overalp integral over space for all frequency pairs - shape(n_f,)
+
+    # overlap integral 
+    top = tf.abs( TRAPZ( tf.conj(f_1)*f_2 , a , b , n) )**2
+
+    # normalizing coefficients
+    bottom = TRAPZ( tf.abs(f_1)**2 , a , b , n ) * TRAPZ( tf.abs(f_2)**2 , a , b , n )
+
+    # normalized overlap integral
+    output = top/bottom
+
+    return output
+
 # ---------------------------------------------------------------------- #
 ###         Tensors and Tensor Operations
 
