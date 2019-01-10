@@ -1,23 +1,7 @@
 import numpy as np
 
-def ALPHA(n_i,n_j,n_k):
-    #produces the spatial step to temportal step ratios called alpha in three dimensions for all spaces in time
-    #n_i: number of spatial steps in the ith dimension - int, shape (1,)
-    #n_j: number of spatial steps in the jth dimension - int, shape (1,)
-    #n_k: number of spatial steps in the kth dimension - int, shape (1,)
-    #alpha: the alpha variable mentioned above - np.array float, shape (n_i,n_j,n_k,3)
+dtype = np.float32
 
-    #set dx/dt = c
-    alpha = np.ones((n_i,n_j,n_k,3),dtype = float)
-
-    #adjust as needed
-    for i in range(n_i):
-        for j in range(n_j):
-            for k in range(n_k):
-                alpha[i,j,k,:] = np.array([2.0,2.0,2.0])
-
-    #return alpha
-    return alpha
 def DISTANCE(x1,x2):
     #determines the distance between two points in 3D space
     #x1: point one - np.array int, shape(1,1,1)
@@ -52,61 +36,47 @@ def MAKE_CYLINDER(radius,center,n_background,n_cylinder):
                     n[i,j,k,0] = n_cylinder
     return n
 
-def REFRACTIVE_INDEX(n_i,n_j,n_k,distribution_type,mask_start,mask_stop,initial_weight):
-    #produces the refractive index values for each postion in space
-    #n_i: number of spatial steps in the ith dimension - int, shape (1,)
-    #n_j: number of spatial steps in the jth dimension - int, shape (1,)
-    #n_k: number of spatial steps in the kth dimension - int, shape (1,)
-    #n: refractive index - np.array float, shape (n_i,n_j,n_k,1)
+def NL_MULTIPLE_DISPERSION_PARAMETERS(n_x,n_y,n_z,n_r,inf_x_mat,w_0_mat,damp_mat,del_x_mat,x_nl_mat,mask_start,mask_end,n_m):
+    # produces the parameters for dispersive and non-linear medium
+    # n_x: number of spatial steps in the 0th dimension - int, shape (1,)
+    # n_y: number of spatial steps in the 1st dimension - int, shape (1,)
+    # n_z: number of spatial steps in the 2nd dimension - int, shape (1,)
+    # n_r: number of Lorentz resonances within the material - int, shape (1,)
+    # mask_start: smallest coordinates of the masked region - tuple int, shape(3,)
+    # mask_end: largest coordinates of the masked region - tuple int, shape(3,)
+    # n_m: number of materials present in simulation - int. shape(1,)
+    #
+    # inf_x: high frequency susceptibility tensor - np.constant, shape(n_x,n_y,n_z)
+    # w_0: Lorentz resonance frequency tensor (rad/s) - np.constant, shape(n_x,n_y,n_z,n_r)
+    # damp: Lorentz damping frequency tensor (rad/s) - np.constant, shape(n_x,n_y,n_z,n_r)
+    # del_x: change in susceptibility tensor (unitless) - np.constant, shape(n_x,n_y,n_z,n_r,n_m)
 
-    #set n to free space
-    n = np.ones((n_i,n_j,n_k,1))
+    #set values to free space
+    inf_x = np.zeros((n_x,n_y,n_z),dtype = dtype)
+    w_0 = np.zeros((n_x,n_y,n_z,n_r),dtype = dtype)
+    damp = np.zeros((n_x,n_y,n_z,n_r),dtype = dtype)
+    del_x = np.zeros((n_x,n_y,n_z,n_r),dtype = dtype)
+    x_nl = np.zeros((n_x,n_y,n_z),dtype = dtype)
 
-    #select distribution type
-    if distribution_type == 'cylinder':
-        radius = 15
-        n_cylinder = 1.5
-        center = np.array([n_i//2,n_j//2,n_k//2],dtype = int)
-        n = MAKE_CYLINDER(radius,center,n,n_cylinder)
+    #check to make sure mask makes sense
+    if mask_start[0] <= mask_end[0] and mask_start[1] <= mask_end[1] and mask_start[2] <= mask_end[2]:
 
-    if distribution_type == 'waveguide':
-        half = 15
-        n_waveguide = 2
-        for i in range(n_i):
-            for j in range(n_j):
-                for k in range(n_k):
-                    if j > n_j//2 - half and j < n_j//2 + half:
-                        n[:,j,k,0] = n_waveguide
+        #assign same values across all space
+        for i in range(n_x):
+            if i <= mask_start[0] or i >= mask_end[0]:
+                for j in range(n_y):
+                    if j <= mask_start[1] or j >= mask_end[1]:
+                        for k in range(n_z):
+                            if k <= mask_start[2] or k >= mask_end[2]:
+                                inf_x[i,j,k] = inf_x_mat
+                                w_0[i,j,k,:] = w_0_mat
+                                damp[i,j,k,:] = damp_mat
+                                x_nl[i,j,k] = x_nl_mat
+                                del_x[i,j,k,:] = del_x_mat
+        
 
-    if distribution_type == 'mask':
-        for i in range(n_i):
-            for j in range(n_j):
-                for k in range(n_k):
-                    if i >= mask_start[0] and j >= mask_start[1] and k >= mask_start[2] and i <= mask_stop[0] and j <= mask_stop[1] and k <= mask_stop[2]:
-                        n[i,j,k,0] = 1./np.sqrt(initial_weight)
-    return n
+    else:
+	    raise ValueError("Starting index must be smaller than or equal to ending index.")
 
-def REFLECTION():
-    #produces the reflections at each wall
-    #reflection: the reflection for a wave along a certian direction with a given polarization and polarity - np.array float, shape (3,3)
-
-    reflection = np.zeros((3,3,2), dtype = float)
-
-    reflection[0,1,0] = 0
-    reflection[0,1,1] = 0
-    reflection[0,2,0] = 0
-    reflection[0,2,1] = 0
-
-    reflection[1,0,0] = 1
-    reflection[1,0,1] = 1
-    reflection[1,2,0] = 1
-    reflection[1,2,1] = 1
-
-    reflection[2,0,0] = -1
-    reflection[2,0,1] = -1
-    reflection[2,1,0] = -1
-    reflection[2,1,1] = -1
-    
-
-    return reflection
+    return inf_x,w_0,damp,del_x,x_nl
     

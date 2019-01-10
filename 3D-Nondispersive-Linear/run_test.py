@@ -1,73 +1,134 @@
 import numpy as np
-from main import FORWARD_1D , FORWARD
-
-# ----------------------- Simulation Constants ------------------#
-n_c = 12    # number of field components per node
-n_w = 1     # number of weights per node
+from main import FORWARD , INVERSE
 
 ##################################################################
-########################## 1D Example ############################
+################## 1D Lithium Niobate Example ####################
 ##################################################################
 
-# ------------ Simulation Parameters ----------------------- #
+# ------------------------------- ------------------------------ #
+# -------------------- Simulation Parameters ------------------- #
+# ------------------------------- ------------------------------ #
+
 n_x = 1
-n_y = 800
+n_y = 200
 n_z = 1 
 
-n_t = 400
+n_t = 1000
 
-time_changes = 0
-scatter_type = 'mask'
-#index of the start of the mask and end of the mask
-mask = np.array([[0,39,0],[0,61,0]])
+# ------------------------------- ------------------------------ #
+# ---------------------- Source Parameters --------------------- #
+# ------------------------------- ------------------------------ #
 
-initial_weight = 1/1.5**2 # initial weight value in masked region
-
-# ------------- Source Parameters --------------------------- #
-location = (0,25,0)
+c0 = 2.99792458e8
+location = (0,100,0)
 polarization = 2
-wavelength = 80
+wavelength = 1.500e-6
+n_wavelength = 40
 injection_axis = 1
 injection_direction = 0
-fwhm = 3*wavelength
+fwhm = 0.5*wavelength/c0
+fwhm_mode = 15
+n_m = 2
+center_mode = 0
+mode_axis = 0
+source_type = 'Line'
+del_l = wavelength/n_wavelength
+
+source_par = [polarization,wavelength,fwhm,location,injection_axis,injection_direction,source_type,fwhm_mode,n_m,center_mode,mode_axis]
+
+# ------------------------------- ------------------------------ #
+# --------------------- Material Parameters -------------------- #
+# ------------------------------- ------------------------------ #
+
+n_r = 2
+inf_x_mat = 0
+w_0_mat = np.array([10105,9037])*10**12
+w_0_mat = np.array([0,0])*10**12
+damp_mat = 0.0*w_0_mat
+a_i_mat_1 = np.array([3.6613,0.1776])
+a_i_mat_0 = np.array([0,0])
+del_x_mat = np.zeros((n_r,n_m))
+del_x_mat[:,0] = a_i_mat_0
+del_x_mat[:,1] = a_i_mat_1
+x_nl = 10e-12/del_l
+x_nl = 0
+
+mask_start = (0,75,0)
+mask_end = (0,125,0)
+
+mat_par = [n_r,inf_x_mat,w_0_mat,damp_mat,del_x_mat,x_nl,mask_start,mask_end,n_m]
+
+# ------------------------------- ------------------------------ #
+# --------------------- Run Multiple Forward ------------------- #
+# ------------------------------- ------------------------------ #
+
+#FORWARD(n_x,n_y,n_z,n_t,del_l,source_par,mat_par)
+
+##################################################################
+############## Inverse 1D Lithium Niobate Example ################
+##################################################################
+
+# ------------------------------- ------------------------------ #
+# -------------------- Simulation Parameters ------------------- #
+# ------------------------------- ------------------------------ #
+
+n_x = 1
+n_y = 200
+n_z = 1
+
+n_t = 1000
+
+# ------------------------------- ------------------------------ #
+# ---------------------- Source Parameters --------------------- #
+# ------------------------------- ------------------------------ #
+
+c0 = 2.99792458e8
+location = (0,100,0)
+polarization = 2
+wavelength = 1.500e-6
+n_wavelength = 50
+injection_axis = 1
+injection_direction = 0
+fwhm = 0.5*wavelength/c0
 fwhm_mode = 15
 n_m = 0
 center_mode = 0
 mode_axis = 0
 source_type = 'Line'
+del_l = wavelength/n_wavelength
 
-FORWARD_1D(n_c,n_w,initial_weight,n_x,n_y,n_z,n_t,time_changes,scatter_type,mask,location,polarization,wavelength,injection_axis,injection_direction,fwhm,fwhm_mode,n_m,center_mode,mode_axis,source_type)
+source_par = [polarization,wavelength,fwhm,location,injection_axis,injection_direction,source_type,fwhm_mode,n_m,center_mode,mode_axis]
 
+# ------------------------------- ------------------------------ #
+# --------------------- Material Parameters -------------------- #
+# ------------------------------- ------------------------------ #
 
-##################################################################
-########################## 2D Example ############################
-##################################################################
+n_r = 2
+n_m = 2
+inf_x_mat = 0
+w_0_mat = np.array([10105,9037])*10**12
+damp_mat = 0.0*w_0_mat
+a_i_mat = np.array([3.6613,0.1776])
+del_x_mat = a_i_mat
+x_nl = 10e-12/del_l
+x_nl = 0
+mask_start = np.array([0,75,0])
+mask_end = np.array([0,125,0])
 
-# ------------ Simulation Parameters ----------------------- #
-n_x = 70
-n_y = 70
-n_z = 1 
+mat_par = [n_r,inf_x_mat,w_0_mat,damp_mat,del_x_mat,x_nl,mask_start,mask_end,n_m]
 
-n_t = 100
+# ------------------------------- ------------------------------ #
+# --------------------- Training Parameters -------------------- #
+# ------------------------------- ------------------------------ #
 
-time_changes = 0
-scatter_type = 'mask'
-#index of the start of the mask and end of the mask
-mask = np.array([[39,39,0],[61,61,0]])
+lr = 0.01
+epochs = 6
 
-initial_weight = 1/1.5**2 # initial weight value in masked region
+train_par = [lr,epochs]
 
-# ------------- Source Parameters --------------------------- #
-location = (25,25,0)
-polarization = 2
-wavelength = 20
-injection_axis = 1
-injection_direction = 0
-fwhm = 3*wavelength
-fwhm_mode = 15
-n_m = 0
-center_mode = 0
-mode_axis = 0
-source_type = 'Line'
+# ------------------------------- ------------------------------ #
+# --------------------- Run Multiple Inverse ------------------- #
+# ------------------------------- ------------------------------ #
 
-FORWARD(n_c,n_w,initial_weight,n_x,n_y,n_z,n_t,time_changes,scatter_type,mask,location,polarization,wavelength,injection_axis,injection_direction,fwhm,fwhm_mode,n_m,center_mode,mode_axis,source_type)
+INVERSE(n_x,n_y,n_z,n_t,del_l,source_par,mat_par,train_par)
+

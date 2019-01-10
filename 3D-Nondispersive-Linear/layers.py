@@ -1,390 +1,644 @@
-import tensorflow as tf
 import numpy as np
+import tensorflow as tf
+from numpy.polynomial import polynomial as p
 import pickle
+import matplotlib.pyplot as plt
+from weights import WEIGHT_INDEXING
 
 data_type = np.float32
 
-# ---------------------- Index Assignment -------------------------------#
-def INDEX_2_COMPONENT(i,j,s):
-    # convert direction, polarization and polarity index to field component
-    # i - direction, int 
-    # j - polarization, int
-    # s - polarity
+# ---------------------------------------------------------------------- #
+###         Dispersion Parameters
+
+def NL_ELECTRIC_DISPERSION_OPERATORS(res_freq,damp,del_x,del_t,inf_x,x_nl):
+    # converts the electrical dispersion and non-linear physical parameters into relevent state and transmission operators
+    # res_freq - resonant frequency (r/s) - np.float32, np.array, shape (n_x,n_y,n_z,n_r)
+    # damp - damping coefficient (r/s) - np.float32, np.array, shape (n_x,n_y,n_z,n_r)
+    # del_x - the change in susceptibility (unitless) - np.float32, np.array, shape (n_x,n_y,n_z,n_r)
+    # del_t - the time step of the simulation (s) - np.float32, shape(1,)
+    # inf_x: high frequency susceptibility tensor - np.constant, shape(n_x,n_y,n_z)
+    # x_nl: non-linear susceptibility - np.constant, shape(n_x,n_y,n_z)
     #
-    # c - scatter field component
+    # sta_ope: a list of state operators - shape(4,)
+    # tra_ope: a list of transmission operators - shape(3,)
 
-    if i == 1 and j == 0 and s == 0:
-        c = 0
-    if i == 1 and j == 0 and s == 1:
-        c = 11
-    if i == 2 and j == 0 and s == 0:
-        c = 1
-    if i == 2 and j == 0 and s == 1:
-        c = 8
-    if i == 0 and j == 1 and s == 0:
-        c = 2
-    if i == 0 and j == 1 and s == 1:
-        c = 10
-    if i == 2 and j == 1 and s == 0:
-        c = 3
-    if i == 2 and j == 1 and s == 1:
-        c = 7
-    if i == 1 and j == 2 and s == 0:
-        c = 4
-    if i == 1 and j == 2 and s == 1:
-        c = 6
-    if i == 0 and j == 2 and s == 0:
-        c = 5
-    if i == 0 and j == 2 and s == 1:
-        c = 9
+    #secondary constants
+    beta = np.sqrt(res_freq**2 - damp**2)
+    A_e = np.exp(-damp*del_t)*np.cos(beta*del_t)
+    B_e = np.exp(-damp*del_t)*np.sin(beta*del_t)
+    K1 = del_x*(1-2*A_e+A_e**2+B_e**2)
 
-    return c
+    #primary constants
+    a_1 = 2*A_e
+    a_2 = -(A_e**2 + B_e**2)
+    b_1 = -2*K1
+    b_2 = 2*K1
 
-def COMPONENT_2_INDEX(c):
-    # convert scatter field component to direction, polarizaiton and polarity index
-    # c - scatter field component
+    #calculate the lorentz transfer function
+    tran_num_coeff , tran_den_coeff = LORENTZ_TRANSFER_FUNCTION(a_1,a_2,b_1,b_2)
+
+    #convert the transfer function into state variable operators
+    a , b , c , d = STATE_OPERATORS(tran_num_coeff , tran_den_coeff)
+
+    #produce transmission operators
+    t = 1/(2 + 2*inf_x)
+    t = np.stack((t,t,t),axis = -1)
+    k = -(2-2*inf_x)
+    k = np.stack((k,k,k),axis = -1)
+    x_nl = np.stack((x_nl,x_nl,x_nl),axis = -1)
+
+    #convert everything to tensors
+    a = tf.convert_to_tensor(a)
+    b = tf.convert_to_tensor(b)
+    c = tf.convert_to_tensor(c)
+    d = tf.convert_to_tensor(d)
+    t = tf.convert_to_tensor(t)
+    k = tf.convert_to_tensor(k)
+
+    #package operators
+    sta_ope = [a,b,c,d]
+    tra_ope = [t,k,x_nl]
+
+    return sta_ope , tra_ope
+
+def NL_ELECTRIC_DISPERSION_OPERATORS_TRAIN(res_freq,damp,del_x,del_t,inf_x,x_nl,weights):
+    # converts the electrical dispersion and non-linear physical parameters into relevent state and transmission operators
+    # res_freq - resonant frequency (r/s) - np.float32, np.array, shape (n_x,n_y,n_z,n_r)
+    # damp - damping coefficient (r/s) - np.float32, np.array, shape (n_x,n_y,n_z,n_r)
+    # del_x - the change in susceptibility (unitless) - np.float32, np.array, shape (n_x,n_y,n_z,n_r)
+    # del_t - the time step of the simulation (s) - np.float32, shape(1,)
+    # inf_x: high frequency susceptibility tensor - np.constant, shape(n_x,n_y,n_z)
+    # x_nl: non-linear susceptibility - np.constant, shape(n_x,n_y,n_z)
+    # weights: (n_x,n_y,n_z)
     #
-    # i - direction, int 
-    # j - polarization, int
-    # s - polarity
+    # sta_ope: a list of state operators - shape(4,)
+    # tra_ope: a list of transmission operators - shape(3,)
+
+    #secondary constants
+    beta = np.sqrt(res_freq**2 - damp**2)
+    A_e = np.exp(-damp*del_t)*np.cos(beta*del_t)
+    B_e = np.exp(-damp*del_t)*np.sin(beta*del_t)
+    K1 = del_x*(1-2*A_e+A_e**2+B_e**2)
+
+    #primary constants
+    a_1 = 2*A_e
+    a_2 = -(A_e**2 + B_e**2)
+    b_1 = -2*K1
+    b_2 = 2*K1
+
+    #calculate the lorentz transfer function
+    tran_num_coeff , tran_den_coeff = LORENTZ_TRANSFER_FUNCTION(a_1,a_2,b_1,b_2)
+
+    #convert the transfer function into state variable operators
+    a , b , c , d = STATE_OPERATORS(tran_num_coeff , tran_den_coeff)
+
+    #produce transmission operators
+    t = 1/(2 + 2*inf_x)
+    t = np.stack((t,t,t),axis = -1)
+    k = -(2-2*inf_x)
+    k = np.stack((k,k,k),axis = -1)
+    x_nl = np.stack((x_nl,x_nl,x_nl),axis = -1)
+
+    #convert everything to tensors
+    a = tf.convert_to_tensor(a)
+    b = tf.convert_to_tensor(b)
+    c = tf.convert_to_tensor(c)
+    d = tf.convert_to_tensor(d)
+    t = tf.convert_to_tensor(t)
+    k = tf.convert_to_tensor(k)
+
+    #multiply weights by sigmoid function to round them to either 1 or zero, then multiply them by the c and d coefficients
+    c = tf.einsum('ijkl,ijk->ijkl',c,tf.sigmoid(10*weights))
+    d = d*tf.sigmoid(10*weights)
+
+    #package operators
+    sta_ope = [a,b,c,d]
+    tra_ope = [t,k,x_nl]
+
+    return sta_ope , tra_ope
+
+def STATE_OPERATORS(tran_num_coeff , tran_den_coeff):
+    # produces tensors that dictate the operations governing the state variable
+    # tran_num_coeff: transfer function numerator polynomial coefficients (w/ alpha_0 = 1) - np.array, shape (n_x,n_y,n_z,n_o+1)
+    # tran_den_coeff: transfer function denominator polynomial coefficients (w/ alpha_0 = 1) - np.array, shape (n_x,n_y,n_z,n_o+1)
+    #
+    # a: constant tensor operating on x to update x - shape(n_x,n_y,n_z,n_s,n_s)
+    # b: constant tensor operating on f to update x - shape(n_x,n_y,n_z,n_s)
+    # c: constant tensor operating on x to update s_e_d - shape(n_x,n_y,n_z,n_s)
+    # d: constant tensor operating on f to update s_e_d - shape(n_x,n_y,n_z)
+
+    #get spatial constants, number of electric field components and polynomial order + 1
+    #note: number of state variables (n_s) is equal to the polynomial order of the transfer function
+    n_x,n_y,n_z,n_o_tmp = np.shape(tran_num_coeff)
+    n_o = n_o_tmp - 1
+    n_s = n_o
+
+    #define alpha and beta values
+    alpha = tran_den_coeff
+    beta = tran_num_coeff
+
+    #initilize tensors
+    a = np.zeros((n_x,n_y,n_z,n_s,n_s),dtype = data_type)
+    b = np.zeros((n_x,n_y,n_z,n_s),dtype = data_type)
+    c = np.zeros((n_x,n_y,n_z,n_s),dtype = data_type)
+    d = np.zeros((n_x,n_y,n_z),dtype = data_type)
+
+    #matrix that acts on state variable matrix to update the state variable
+    for x in range(n_x):
+        for y in range(n_y):
+            for z in range(n_z):
+                a[x,y,z,:,:] = np.diag(np.ones(n_s-1), 1)
+                b[x,y,z,:] = np.zeros(n_s)
+                b[x,y,z,-1] = 1
+                d[x,y,z] = beta[x,y,z,0]
+
+                for s in range(n_s):
+                    a[x,y,z,n_s-1,s] = -alpha[x,y,z,-s-1]
+                    c[x,y,z,s:s+1] = beta[x,y,z,-s-1] - alpha[x,y,z,-s-1]*beta[x,y,z,0]
+
+    return a , b , c , d
+
+def LORENTZ_TRANSFER_FUNCTION(a_1,a_2,b_1,b_2):
+    #determines the Lorentz model transfer function in the z domain in terms
+    #of polynomial coefficients in the numerator and denominator
+    #a_1,a_2,b_1,b_2: a primary constant of the Lorentz model - np.float32, np.array, shape (n_x,n_y,n_z,n_r)
+    #
+    # tran_num_coeff: transfer function numerator polynomial coefficients (w/ alpha_0 = 1) - np.array, shape (n_x,n_y,n_z,n_o+1)
+    # tran_den_coeff: transfer function denominator polynomial coefficients (w/ alpha_0 = 1) - np.array, shape (n_x,n_y,n_z,n_o+1)
+
+    #get spatial constants, number of electric field components and number of resonances
+    n_x,n_y,n_z,n_r = np.shape(a_1)
+
+    #determine highest order of transfer function
+    n_o = 2*n_r
+
+    #initilize the transmission numerator and denomenator polynomial coefficients
+    tran_num_coeff = np.zeros((n_x,n_y,n_z,n_o+1))
+    tran_den_coeff = np.zeros((n_x,n_y,n_z,n_o+1))
+
+    #determine polynomial coefficients of each resonance function at each electric field component over all space
+    num_coeff = np.stack((b_1,b_2,0*b_1),axis = -1)
+    den_coeff = np.stack((a_1*0+1,-a_1,-a_2),axis = -1)
+
+    #determine sum of resonance functions in terms of polynomial coeff for each electric field component over all space
+    for x in range(n_x):
+        for y in range(n_y):
+            for z in range(n_z):
+
+                #a = num_coeff[x,y,z,:,:]
+                num_results , den_results = SUM_RATIONAL_POLY(num_coeff[x,y,z,:,:],den_coeff[x,y,z,:,:])
+
+                #zeropad lenght to ensure it includes coeff up to the highest order of the transfer function
+                if len(num_results) < n_o + 1:
+                    num_results = np.pad(num_results,(n_o + 1 - len(num_results),0),'constant')
+                if len(den_results) < n_o + 1:
+                    den_results = np.pad(den_results,(n_o + 1 - len(den_results),0),'constant')
+                
+                #save values normalized by the highest order denomantor coefficient
+                tran_num_coeff[x,y,z,:] = num_results/den_results[0]
+                tran_den_coeff[x,y,z,:] = den_results/den_results[0]
+
+    return tran_num_coeff , tran_den_coeff
+
+# ---------------------------------------------------------------------- #
+###         Non-linear Operations and Parameters
+
+def CHI_2_NON_LINEAR(x_nl,t,u,f_pre):
+    # solve the non-linear chi 2 update equation for f
+    # x_nl: the non-linear second order susceptibility - np.constant, shape(n_x,n_y,n_z,n_f/2)
+    # t: constant tensor operating on f , s_pre and f**2 to update f - shape(n_x,n_y,n_z,n_f/2)
+    # u: forcing function of non-linear f update equation - np.constant, shape (n_x,n_y,n_z,n_f/2)
+    # f_pre: the previous total fields - np.constant, shape (n_x,n_y,n_z,n_f/2)
+    #
+    # f: total fields - np.constant, shape (n_x,n_y,n_z,n_f/2)
+
     
-    if c == 0 or c == 11:
-        i = 1
-        j = 0
-    if c == 1 or c == 8:
-        i = 2
-        j = 0
-    if c == 2 or c == 10:
-        i = 0
-        j = 1
-    if c == 3 or c == 7:
-        i = 2
-        j = 1
-    if c == 4 or c == 6:
-        i = 1
-        j = 2
-    if c == 5 or c == 9:
-        i = 0
-        j = 2
-    if c <= 5:
-        s = 0
-    else:
-        s = 1
+    #solve update equation for both roots
+    f_0 =  ( 1 + tf.sqrt(1-8.0*t*x_nl*u) ) / ( 4.0*t*x_nl )
+    f_1 = ( 1 - tf.sqrt(1-8.0*t*x_nl*u) ) / ( 4.0*t*x_nl )
 
-    return i,j,s
+    #determine perturbation
+    f_per_0 = f_0 - f_pre
+    f_per_1 = f_1 - f_pre
+    f_per = tf.stack([f_per_0,f_per_1],axis=-1)
+    f_per = tf.reduce_min(f_per,axis = -1)
 
-# ---------------------- Tensors and Tensor Operations ------------------#
+    #assign value with smallest perturbation
+    f = f_per+f_pre
+
+    return f
+
+# ---------------------------------------------------------------------- #
+###         Misc. Mathematical Operations
+
+def SUM_RATIONAL_POLY(num_coeff,den_coeff):
+    #determines the numerator and denomanator polynomial coefficients after summing rational polynomials.
+    #assumes zero over zero polynomials are just 0
+    #num_coeff: the coefficients (highest oder first) of the numerators for each rational polynomial - np.float32 np.array, shape (number of rational polynomials,highest order numerator)
+    #den_coeff: the coefficients (highest oder first) of the denominators for each rational polynomial - np.float32 np.array, shape (number of rational polynomials,highest order denominator)
+    #
+    #numerator_results: the coefficients (highest oder first) of the numerator - np.float32 np.array, shape(order of numerator)
+    #denominator_results: the coefficients (highest oder first) of the denominator - np.float32 np.array, shape(order of denominator)
+
+    #get number of polynomials and highest order of polynomials
+    n_p,n_o_tmp = np.shape(num_coeff)
+    n_p_tmp,_= np.shape(den_coeff)
+    n_o = n_o_tmp - 1
+
+    #make sure there are an equal number of numerator and denominator polynomials
+    if n_p != n_p_tmp:
+        raise ValueError("Starting index must be smaller than or equal to ending index.")
+
+    #make sure polynomials with all zeros are set to 0/1 = 0
+    for i in range(n_p):
+        if np.array_equal(den_coeff[i,:] , np.zeros(n_o+1)) and np.array_equal( num_coeff[i,:] , np.zeros(n_o+1) ):
+            den_coeff[i,n_o] = 1
+        elif np.array_equal(den_coeff[i,:] , np.zeros(n_o+1)) and ~np.array_equal( num_coeff[i,:] , np.zeros(n_o+1) ):
+            raise ValueError("Denominator is zero and numerator is non-zero")
+
+
+    #denominator
+    d_results = np.poly1d([1])
+    
+    for i in range(n_p):
+        d = np.poly1d(den_coeff[i,:])
+        d_results = d_results*d
+
+    #numerator 
+    n_results = np.poly1d([0])
+
+    for i in range(n_p):
+        d = np.poly1d(den_coeff[i,:])
+        n = np.poly1d(num_coeff[i,:])
+        
+        d_contribution,_ = d_results/d
+        n_results = d_contribution * n + n_results
+
+    return n_results.c , d_results.c
+
+def SPECTRUM_Z(f_time,del_t,n_t,freq_1,freq_2):
+    # determines the spectrum of the z-polarized field along all space
+    # fig_num: the figure number
+    # f_time: the field over all time and space - shape(n_t,n_x,n_y,n_z,n_f)
+    # del_t: the time step (s) - shape(1,)
+    # n_t: number of time steps - shape(1,)
+    # freq_1: the first frequency value to calculate (Hz)
+    # freq_2: the second frequency value to calculate (Hz)
+    #
+    # sp_1: the spectrum over the y - axis for freq_1 - shape(n_y)
+    # sp_2: the spectrum over the y - axis for freq_2 - shape(n_y)
+
+    # get the z polarized time signal
+    time_signal = f_time[:,:,:,2,:]
+
+    # time values
+    t = np.arange(0,del_t*n_t,del_t)
+
+    #calculate spectrum
+    sp = tf.fft(time_signal)
+    freq = np.fft.fftfreq(t.shape[-1])
+    l = len(freq)
+    df = freq[1] - freq[0]
+
+    # only keep positive frequency values
+    freq = freq[0:l//2-1]/del_t
+    sp = sp[:,:,:,0:l//2-1]
+
+    #find frequency values
+    for i in range(len(freq)):
+        if freq[i] + df >= freq_1 and freq[i] <= freq_1:
+            index_1 = i
+        if freq[i] + df >= freq_2 and freq[i] <= freq_2:
+            index_2 = i
+
+    #give spectrum vs. space for frequencty values
+    sp_1 = sp[0,:,0,index_1]
+    sp_2 = sp[0,:,0,index_2]
+
+    return sp_1 , sp_2
+
+def TRAPZ(f,a,b,n):
+    #calculates the definite integral using the trapezoidal rule
+    # f: function values at each point - tf.constant, tf.float32, shape(n+1,)
+    # a: lower limit of definite integral - shape(1,)
+    # b: upper limit of definite integral - shape(1,)
+    # n: number of function points - shape(1,)
+    #
+    # output: approximate value of the definite integral of f from a to b
+
+    #spatial step
+    del_x = (b-a)/n
+
+    #trapezoidal rule
+    output = ( del_x/2 ) * ( f[0] + f[n] + 2*tf.reduce_sum(f[1:n]) )
+
+    return output
+# ---------------------------------------------------------------------- #
+###         Tensors and Tensor Operations
+
 def CONSTANT_MATRICES():
     #produces the matrices of constants used to construct the scatter tensor
 
-    a = 1
-    c = 0
-    b = 0
-    d = 0
+    #incident voltages to reflected fields
+    r_1_t = np.array([[1,1,1,1,0,0,0,0,0,0,0,0],
+                [0,0,0,0,1,1,1,1,0,0,0,0],
+                [0,0,0,0,0,0,0,0,1,1,1,1],
+                [0,0,0,0,0,0,-1,1,1,-1,0,0],
+                [1,-1,0,0,0,0,0,0,0,0,-1,1],
+                [0,0,-1,1,1,-1,0,0,0,0,0,0]],dtype = data_type)
 
-    ones_matrix =  np.array([[a,b,d,0,0,0,0,0,b,0,-d,c],
-                            [b,a,0,0,0,d,0,0,c,-d,0,b],
-                            [d,0,a,b,0,0,0,b,0,0,c,-d],
-                            [0,0,b,a,d,0,-d,c,0,0,b,0],
-                            [0,0,0,d,a,b,c,-d,0,b,0,0],
-                            [0,d,0,0,b,a,b,0,-d,c,0,0],
-                            [0,0,0,-d,c,b,a,d,0,b,0,0],
-                            [0,0,b,c,-d,0,d,a,0,0,b,0],
-                            [b,c,0,0,0,-d,0,0,a,d,0,b],
-                            [0,-d,0,0,b,c,b,0,d,a,0,0],
-                            [-d,0,c,b,0,0,0,b,0,0,a,d],
-                            [c,b,-d,0,0,0,0,0,b,0,d,a]])
+    #total fields to reflected voltages
+    r = np.array([[1,0,0,0,-1,0],
+            [1,0,0,0,1,0],
+            [1,0,0,0,0,1],
+            [1,0,0,0,0,-1],
+            [0,1,0,0,0,-1],
+            [0,1,0,0,0,1],
+            [0,1,0,1,0,0],
+            [0,1,0,-1,0,0],
+            [0,0,1,-1,0,0],
+            [0,0,1,1,0,0],
+            [0,0,1,0,1,0],
+            [0,0,1,0,-1,0]],dtype = data_type)
 
-    a = -1
-    c = 1
-    b = 0
-    d = 1
+    #flip incident voltages
+    p = np.array([[0,1,0,0,0,0,0,0,0,0,0,0],
+                [1,0,0,0,0,0,0,0,0,0,0,0],
+                [0,0,0,1,0,0,0,0,0,0,0,0],
+                [0,0,1,0,0,0,0,0,0,0,0,0],
+                [0,0,0,0,0,1,0,0,0,0,0,0],
+                [0,0,0,0,1,0,0,0,0,0,0,0],
+                [0,0,0,0,0,0,0,1,0,0,0,0],
+                [0,0,0,0,0,0,1,0,0,0,0,0],
+                [0,0,0,0,0,0,0,0,0,1,0,0],
+                [0,0,0,0,0,0,0,0,1,0,0,0],
+                [0,0,0,0,0,0,0,0,0,0,0,1],
+                [0,0,0,0,0,0,0,0,0,0,1,0]],dtype = data_type)
 
-    filter_d_matrix =  np.array([[a,b,d,0,0,0,0,0,b,0,-d,c],
-                                [b,a,0,0,0,d,0,0,c,-d,0,b],
-                                [d,0,a,b,0,0,0,b,0,0,c,-d],
-                                [0,0,b,a,d,0,-d,c,0,0,b,0],
-                                [0,0,0,d,a,b,c,-d,0,b,0,0],
-                                [0,d,0,0,b,a,b,0,-d,c,0,0],
-                                [0,0,0,-d,c,b,a,d,0,b,0,0],
-                                [0,0,b,c,-d,0,d,a,0,0,b,0],
-                                [b,c,0,0,0,-d,0,0,a,d,0,b],
-                                [0,-d,0,0,b,c,b,0,d,a,0,0],
-                                [-d,0,c,b,0,0,0,b,0,0,a,d],
-                                [c,b,-d,0,0,0,0,0,b,0,d,a]])
+    return r_1_t , r , p
 
-    a = -1
-    c = -1
-    b = 1
-    d = 0
+def MULTIPLE_CONSTANT_TENSORS(w_0,n_c,n_f):
+    # produces the constant tensors used to scatter the fields and construct the boundary tensor
+    # n_c: number of voltage components - shape(1,)
+    # n_f: number of field components - shape(1,)
 
-    filter_b_matrix =  np.array([[a,b,d,0,0,0,0,0,b,0,-d,c],
-                                [b,a,0,0,0,d,0,0,c,-d,0,b],
-                                [d,0,a,b,0,0,0,b,0,0,c,-d],
-                                [0,0,b,a,d,0,-d,c,0,0,b,0],
-                                [0,0,0,d,a,b,c,-d,0,b,0,0],
-                                [0,d,0,0,b,a,b,0,-d,c,0,0],
-                                [0,0,0,-d,c,b,a,d,0,b,0,0],
-                                [0,0,b,c,-d,0,d,a,0,0,b,0],
-                                [b,c,0,0,0,-d,0,0,a,d,0,b],
-                                [0,-d,0,0,b,c,b,0,d,a,0,0],
-                                [-d,0,c,b,0,0,0,b,0,0,a,d],
-                                [c,b,-d,0,0,0,0,0,b,0,d,a]])
+    #initilize matrices
+    r_1_t_matrix , r_matrix , p_matrix = CONSTANT_MATRICES()
 
-    beta1_vector = np.array([1,-1,-1,1,-1,1,-1,1,-1,1,-1,1])
-    beta2_vector = np.array([0,1,1,0,1,0,1,0,1,0,1,0])
-
-    beta1_matrix = np.zeros((12,12))
-    beta2_matrix = np.zeros((12,12))
-
-    for i in range(12):
-        beta1_matrix[:,i] = beta1_vector
-        beta2_matrix[:,i] = beta2_vector
-
-    return filter_d_matrix, filter_b_matrix, ones_matrix , beta1_matrix , beta2_matrix
-
-def MESH_INDEX(c):
-    #get the mesh index for a given field component c
-    #c: field component - int shape(1,)
-
-    #table relating c index to mesh direction (0-x, 1-y, 2-z)
-    index_d = np.array( [[1,2,0],[0,1,2],[1,2,0],[2,0,1],[2,0,1],[0,1,2],[2,0,1],[2,0,1],[0,1,2],[0,1,2],[1,2,0],[1,2,0]] )
-    index_b = np.array( [[2,0,1],[2,0,1],[0,1,2],[0,1,2],[1,2,0],[1,2,0],[1,2,0],[0,1,2],[2,0,1],[1,2,0],[0,1,2],[2,0,1]] )
-
-    return index_d[c,:] , index_b[c,:]
-
-def CONSTANT_TENSORS(mesh,n_c):
-    #produces the constant tensors used to construct the scatter tensor and boundary tensor
-    #mesh: contains the alpha mesh variables (del_space/del_time/c0) in each direction - numpy.array shape(n_x,n_y,n_z,3)
-    #n_c: number of field components
-
-    #produce matrices for filter the d1 and d2 matrix along with the ones matrix
-    filter_d_matrix, filter_b_matrix, ones_matrix , beta1_matrix , beta2_matrix = CONSTANT_MATRICES()
     #spatial parameters
-    n_x,n_y,n_z,_ = np.shape(mesh)
+    n_x,n_y,n_z,_ = np.shape(w_0)
 
-    #initilize boundary tensor
+    #initilize tensor
     boundary = np.ones((n_x,n_y,n_z,n_c),dtype = data_type)
+    r_1_t = np.zeros((n_x,n_y,n_z,n_f,n_c),dtype = data_type)
+    r = np.zeros((n_x,n_y,n_z,n_c,n_f),dtype = data_type)
+    p = np.zeros((n_x,n_y,n_z,n_c,n_c),dtype = data_type)
 
-    #initilize constant tensors
-    a1 = np.zeros((n_x,n_y,n_z,n_c,n_c), dtype = data_type)
-    a2 = np.zeros((n_x,n_y,n_z,n_c,n_c), dtype = data_type)
-    a3 = np.zeros((n_x,n_y,n_z,n_c,n_c), dtype = data_type)
-    a4 = np.zeros((n_x,n_y,n_z,n_c,n_c), dtype = data_type)
-    a5 = np.zeros((n_x,n_y,n_z,n_c,n_c), dtype = data_type)
-    a6 = np.zeros((n_x,n_y,n_z,n_c,n_c), dtype = data_type)
-  
-    beta1_tens = np.zeros((n_x,n_y,n_z,n_c,n_c), dtype = data_type)
-    beta2_tens = np.zeros((n_x,n_y,n_z,n_c,n_c), dtype = data_type)
-
-    filter_d_tens = np.zeros((n_x,n_y,n_z,n_c,n_c), dtype = data_type)
-    filter_b_tens = np.zeros((n_x,n_y,n_z,n_c,n_c), dtype = data_type)
-
-    ones_tens = np.zeros((n_x,n_y,n_z,n_c,n_c), dtype = data_type)
 
     #build constant tensors based on relationship between mesh index and field component c
     for x in range(n_x):
         for y in range(n_y):
             for z in range(n_z):
 
+                #incident voltages to reflected fields tensor
+                r_1_t[x,y,z,:,:] = r_1_t_matrix
+                r[x,y,z,:,:] = r_matrix
+                p[x,y,z,:,:] = p_matrix
+
+
                 #build boundary tensor
                 if y == 0 or x == n_y - 1:
                       boundary[x,y,z,:] = np.zeros(n_c,dtype = data_type)
+   
+    return tf.convert_to_tensor(r_1_t) , tf.convert_to_tensor(r) , tf.convert_to_tensor(p) , tf.convert_to_tensor(boundary)
 
-                #build filter and ones tensors
-                filter_d_tens[x,y,z,:,:] = filter_d_matrix
-                filter_b_tens[x,y,z,:,:] = filter_b_matrix
-                ones_tens[x,y,z,:,:] = ones_matrix
-                beta1_tens[x,y,z,:,:] = beta1_matrix
-                beta2_tens[x,y,z,:,:] = beta2_matrix
+# ---------------------------------------------------------------------- #
+###            Transfer Operation
 
-                for c1 in range(n_c):
-
-                    d_index,b_index = MESH_INDEX(c1)
-
-                    kd = d_index[2]
-                    jd = d_index[1]
-                    id = d_index[0]
-
-                    kb = b_index[2]
-                    jb = b_index[1]
-                    ib = b_index[0]
-
-                    for c2 in range(n_c):
-                        
-                        a1[x,y,z,c1,c2] = ( mesh[x,y,z,0] * mesh[x,y,z,1] * mesh[x,y,z,2] ) ** 2
-                        a2[x,y,z,c1,c2] = mesh[x,y,z,0] ** -2 + mesh[x,y,z,1] ** -2 + mesh[x,y,z,2] ** -2
-
-                        a3[x,y,z,c1,c2] = 2 * mesh[x,y,z,kd]**2 * mesh[x,y,z,jd]**2 
-                        a4[x,y,z,c1,c2] = 2 * mesh[x,y,z,id]**2 * mesh[x,y,z,kd]**2 
-                        a5[x,y,z,c1,c2] = 2 * mesh[x,y,z,jb]**2 * mesh[x,y,z,kb]**2 
-                        a6[x,y,z,c1,c2] = 2 * mesh[x,y,z,ib]**2 * mesh[x,y,z,kb]**2 
-
-    return a1,a2,a3,a4,a5,a6,filter_d_tens,filter_b_tens,ones_tens,beta1_tens,beta2_tens,boundary
-
-# ---------------------- Transfer Operation -----------------------------#
-def TRANSFER_OPERATION(field):
+def TRANSFER(field):
     #transfers field components for all points in space
     #field: the field to be transfered - shape(n_x,n_y,n_z,n_c)
 
     with tf.name_scope("transfer_op"):
         #explain shifts here
-        tmp0 = tf.manip.roll(field[:,:,:,0],shift=-1,axis=1)
-        tmp1 = tf.manip.roll(field[:,:,:,1],shift=-1,axis=2)
-        tmp2 = tf.manip.roll(field[:,:,:,2],shift=-1,axis=0)
-        tmp3 = tf.manip.roll(field[:,:,:,3],shift=-1,axis=2)
-        tmp4 = tf.manip.roll(field[:,:,:,4],shift=-1,axis=1)
-        tmp5 = tf.manip.roll(field[:,:,:,5],shift=-1,axis=0)
-        tmp6 = tf.manip.roll(field[:,:,:,6],shift=1,axis=1)
+
+        tmp0 = tf.manip.roll(field[:,:,:,0],shift=-1,axis=2)
+        tmp1 = tf.manip.roll(field[:,:,:,1],shift=1,axis=2)
+        tmp2 = tf.manip.roll(field[:,:,:,2],shift=-1,axis=1)
+        tmp3 = tf.manip.roll(field[:,:,:,3],shift=1,axis=1)
+        tmp4 = tf.manip.roll(field[:,:,:,4],shift=-1,axis=0)
+        tmp5 = tf.manip.roll(field[:,:,:,5],shift=1,axis=0)
+        tmp6 = tf.manip.roll(field[:,:,:,6],shift=-1,axis=2)
         tmp7 = tf.manip.roll(field[:,:,:,7],shift=1,axis=2)
-        tmp8 = tf.manip.roll(field[:,:,:,8],shift=1,axis=2)
-        tmp9 = tf.manip.roll(field[:,:,:,9],shift=1,axis=0)
-        tmp10 = tf.manip.roll(field[:,:,:,10],shift=1,axis=0)
-        tmp11 = tf.manip.roll(field[:,:,:,11],shift=1,axis=1)
+        tmp8 = tf.manip.roll(field[:,:,:,8],shift=-1,axis=1)
+        tmp9 = tf.manip.roll(field[:,:,:,9],shift=1,axis=1)
+        tmp10 = tf.manip.roll(field[:,:,:,10],shift=-1,axis=0)
+        tmp11 = tf.manip.roll(field[:,:,:,11],shift=1,axis=0)
 
-        transferred_field = tf.stack([tmp11,tmp8,tmp10,tmp7,tmp6,tmp9,tmp4,tmp3,tmp1,tmp5,tmp2,tmp0],axis=3,name="stack")
+        transferred_field = tf.stack([tmp1,tmp0,tmp3,tmp2,tmp5,tmp4,tmp7,tmp6,tmp9,tmp8,tmp11,tmp10],axis=3)
 
-        return transferred_field
-        
-# ---------------------- Scatter Tensor Generation ----------------------#
-def SCATTER(weight_tens,a1,a2,a3,a4,a5,a6,filter_d_tens,filter_b_tens,ones_tens,n_c,n_x,n_y,n_z,n_w,beta1_tens,beta2_tens):
-    #produces the scatter tensor to operate on the field tensor
-    #weight_tens: weight tensor - shape (layers,n_x,n_y,n_z,n_w)
-    #S: scatter tensor - shape (n_x,n_y,n_z,n_c,n_c)
+    return transferred_field
 
-    #assign a weight to each field component
-    w = tf.reshape(weight_tens,[n_x,n_y,n_z,n_w,n_w])
-    w = tf.tile(w,[1,1,1,n_c//n_w,n_c//n_w])
+# ---------------------------------------------------------------------- #
+###         Scattering Operations
 
-    #calculate portions of the Cd and Cb tensors
-    A = tf.multiply(a1,4.0*tf.reciprocal(w) - a2)
-    B = A - tf.sqrt( tf.multiply(A,A) - tf.multiply(a1,w) )
+def MULTIPLE_LORENTZ(f,x,a,b,c,d):
+    # calculates an electrical dielectric accumulator for Lorentz model with multiple resonances
+    # f: total fields - np.constant, shape (n_x,n_y,n_z)
+    # x: state variable tensor - np.constant, shape (n_x,n_y,n_z,n_o)
+    # a: constant tensor operating on x to update x - shape(n_x,n_y,n_z,n_o,n_o)
+    # b: constant tensor operating on f to update x - shape(n_x,n_y,n_z,n_o)
+    # c: constant tensor operating on x to update s_e_d - shape(n_x,n_y,n_z,n_o)
+    # d: constant tensor operating on f to update s_e_d - shape(n_x,n_y,n_z)
+    #
+    # s_e_d: the electrical dielectric accumulator - shape(n_x,n_y,n_z)
+    # x_next: state variable tensor at the next time step - shape (n_x,n_y,n_z,n_o)
 
-    #calculate the normalized capacitance tensors
-    Cd = tf.divide ( a3 + B , tf.multiply( tf.multiply (8.0,a1),tf.reciprocal(w) ) - a4 )
-    Cb = tf.divide ( a5 + B , tf.multiply( tf.multiply (8.0,a1),tf.reciprocal(w) ) - a6 )
+    #calculate state variable
+    x_next = tf.einsum('ijko,ijkmo->ijkm',x,a) + tf.einsum('ijko,ijk->ijko ',b,f)
 
-    #combine to produce the d and b tensors
-    d = beta2_tens + tf.multiply(beta1_tens,Cd)
-    b = beta2_tens + tf.multiply(beta1_tens,Cb)
+    #calculate the electrical dielectric accumulator
+    s_e_d = tf.einsum('ijko,ijko->ijk',c,x) + tf.multiply(d,f)
 
-    #produce the scatter tensor
-    scatter_tensor = tf.multiply(filter_d_tens,d) + tf.multiply(filter_b_tens,b) + ones_tens
+    return s_e_d , x_next
 
-    return scatter_tensor
+def NL_MULTIPLE_TRANSMISSION(f_r,sta_ope,x,t,k,x_nl,s_e_pre,f_pre):
+    # transmitts the reflected fields into the total fields for a non-linear multiple 
+    # resonance Lorentz model
+    # f_r: reflected fields - np.constant, shape (n_x,n_y,n_z,n_f/2)
+    # sta_ope: a list of state operators - shape(4,)
+    # x: state variable tensor - np.constant, shape (n_x,n_y,n_z,# of state variables,n_f/2)
+    # t: constant tensor operating on f_r and s_pre to update f - shape(n_x,n_y,n_z,n_f/2)
+    # k: constant tensor operating on f to update s - shape(n_x,n_y,n_z,n_f/2)
+    # x_nl: the non-linear second order susceptibility - np.constant, shape(n_x,n_y,n_z,n_f/2)
+    # s_e_pre: previous total electric accumulator tensor - shape(n_x,n_y,n_z,n_f/2)
+    # f_pre: previous time step total fields - np.constant, shape (n_x,n_y,n_z,n_f/2)
+    #
+    # f: total fields - np.constant, shape (n_x,n_y,n_z,n_f/2)
+    # s_e_pre: previous total electric accumulator tensor - shape(n_x,n_y,n_z,n_f/2)
+    # x_next: the state variable matrix value at the next time step - np.constant, shape (n_x,n_y,n_z,# of state variables,n_f/2)
 
-# -------------------------- Propagation Operation ------------------------#
-def PROPAGATE_1D(field_in_tens,mesh,n_c,weight_tens,n_t,n_w):
-    # propagte the fields in STSN assuming a 1D simulation
-    # field_in_tens: input field tensor containing the field at all points in space and time - tf.constant tf.float##, shape(n_x,n_y,n_z,n_c,n_t)
-    # mesh: holds the mesh length values for all space - np.array int, shape(n_x,n_y,n_z,3)
-    # n_c: number of field componentes - int, shape(1)
-    # weight_tens: weights in all regions - tf.Variable tf.float##, shape(n_x,n_y,n_z,n_w)
+    #calculate the forcing function
+    u = tf.multiply((f_r + s_e_pre), t)
+
+    #update f
+    #f = CHI_2_NON_LINEAR(x_nl,t,u,f_pre)
+    f = u
+
+    #calculate dielectric accumulator in x
+    s_e_d_x , x_next_x = MULTIPLE_LORENTZ(f[:,:,:,0],x[:,:,:,:,0],sta_ope[0],sta_ope[1],sta_ope[2],sta_ope[3])
+
+    #calculate dielectric accumulator in y
+    s_e_d_y , x_next_y = MULTIPLE_LORENTZ(f[:,:,:,1],x[:,:,:,:,1],sta_ope[0],sta_ope[1],sta_ope[2],sta_ope[3])
+
+    #calculate dielectric accumulator in z
+    s_e_d_z , x_next_z = MULTIPLE_LORENTZ(f[:,:,:,2],x[:,:,:,:,2],sta_ope[0],sta_ope[1],sta_ope[2],sta_ope[3])
+
+    #combine x,y and z components
+    s_e_d = tf.stack((s_e_d_x,s_e_d_y,s_e_d_z),axis = -1)
+    x_next = tf.stack((x_next_x,x_next_y,x_next_z),axis = -1)
+
+    #calculate the main accumulator
+    s_e_pre = f_r + tf.multiply(k,f) - tf.multiply(2*x_nl,f**2) + s_e_d
+
+    return f , s_e_pre , x_next
+
+def NL_MULTIPLE_SCATTER(v_i,v_f,r_1_t,r,p,x,tra_ope,s_e_pre,sta_ope,f_pre):
+    # scatters the incident voltages and free-source fields into reflected
+    # voltages for a non-linear Lorentz model with multiple resonances
+    # v_i: incident voltages , tf.constant - shape(n_x,n_y,n_z,n_c)
+    # v_f: free-source fields , tf.constant - shape(n_x,n_y,n_z,n_f)
+    # r_1_t: converts incident voltages to reflected fields , tf.constant - shape(n_x,n_y,n_z,n_f,n_c)
+    # r: converts total fields to reflected voltages , tf.constant - shape(n_x,n_y,n_z,n_c,n_f)
+    # p: flips incidnet voltages , tf.constant - shape(n_x,n_y,n_z,n_c,n_c)
+    # x: state variable tensor - np.constant, shape (n_x,n_y,n_z,# of state variables,n_f/2)
+    # tra_ope: a list of transmission operators - list, shape (3,)
+    # s_e_pre: previous total electric accumulator tensor - shape(n_x,n_y,n_z,n_f/2)
+    # sta_ope: a list of state operators - shape(4,)
+    # f: previous total fields - np.constant, shape (n_x,n_y,n_z,n_f)
+    #
+    # v_r: reflected voltages , tf.constant - shape(n_x,n_y,n_z,n_c)
+    # s_e_pre: previous total electric accumulator tensor - shape(n_x,n_y,n_z,n_f/2)
+    # x_next: the state variable matrix value at the next time step - np.constant, shape (n_x,n_y,n_z,# of state variables,n_f/2)
+    # f: total fields - np.constant, shape (n_x,n_y,n_z,n_f/2)
+
+    #calculate the reflected fields
+    f_r = tf.einsum('ijkm,ijknm->ijkn',v_i,r_1_t) - 0.5*v_f
+
+    #seperate out electric and magnetic reflected fields
+    f_r_e = f_r[:,:,:,0:3]
+    f_r_m = f_r[:,:,:,3:6]
+    f_e_pre = f_pre[:,:,:,0:3]
+
+    #calculate total fields 
+    f_e,s_e_pre,x_next = NL_MULTIPLE_TRANSMISSION(f_r_e,sta_ope,x,tra_ope[0],tra_ope[1],tra_ope[2],s_e_pre,f_e_pre)
+
+    f_m = 0.5*f_r_m
+
+    #recombine total fields
+    f = tf.concat([f_e,f_m],3)
+
+    #calculate reflected voltages
+    v_r = tf.einsum('ijkm,ijknm->ijkn',f,r) - tf.einsum('ijkm,ijknm->ijkn',v_i,p)
+
+    return v_r,s_e_pre,x_next,f
+
+# ---------------------------------------------------------------------- #
+###         Propagation Operation
+
+def NL_MULTIPLE_PROPAGATE(v_f,inf_x,w_0,damp,del_x,x_nl,del_t,n_c,n_t,n_f):
+    # propagte the voltages for a non-linear multiple resonant lorentz model (both scattering and transfer)
+    # v_f: free-source fields , tf.constant - shape(n_x,n_y,n_z,n_f,n_t)
+    # inf_x: high frequency susceptibility tensor - np.constant, shape(n_x,n_y,n_z)
+    # w_0: Lorentz resonance frequency tensor (rad/s) - np.constant, shape(n_x,n_y,n_z,n_r)
+    # damp: Lorentz damping frequency tensor (rad/s) - np.constant, shape(n_x,n_y,n_z,n_r)
+    # del_x - the change in susceptibility (unitless) - np.float32, np.array, shape (n_x,n_y,n_z,n_r)
+    # x_nl: non-linear susceptibility - np.constant, shape(n_x,n_y,n_z)
+    # del_t - the time step of the simulation (s) - np.float32, shape(1,)
+    # n_c: number of voltage components - int, shape(1,)
     # n_t: number of time steps - int, shape(1,)
-    # n_w: number of weight steps - int, shape(1,)
-
-    #spatial steps
-    n_x,n_y,n_z,_ = np.shape(mesh)
-
-    #produce constant tensors for scatter and transfer operations
-    a1,a2,a3,a4,a5,a6,filter_d_tens,filter_b_tens,ones_tens,beta1_tens,beta2_tens,boundary = CONSTANT_TENSORS(mesh,n_c)
-
-    #create scatter tensor
-    scatter_tensor = SCATTER(weight_tens,a1,a2,a3,a4,a5,a6,filter_d_tens,filter_b_tens,ones_tens,n_c,n_x,n_y,n_z,n_w,beta1_tens,beta2_tens)
+    # n_f: number of field components at each point in space - int, shape(1,)
+    #
+    # v_i: voltage incident - tf.constant, shape(n_x,n_y,n_z,n_c)
+    # f_time: total fields for all time - tf.constant, shape(n_x,n_y,n_z,n_f,n_t)
+    # f_final: total fields at last time step - tf.constant, shape(n_x,n_y,n_z,n_f)
     
-    #keep field_out_tens_tmp a rank 4 tensor
-    field_out_tens_tmp = 0*field_in_tens[:,:,:,:,0]
+    #get spatial steps and number of resonances
+    n_x,n_y,n_z,n_r = np.shape(w_0)
 
-    #initilize field_out_tens
-    source = field_in_tens[:,:,:,:,0]
-    field_out_tens_tmp = source + field_out_tens_tmp
+    #determine the electrical dispersion state variable operators
+    sta_ope , tra_ope = NL_ELECTRIC_DISPERSION_OPERATORS(w_0,damp,del_x,del_t,inf_x,x_nl)
 
-    field_out_tens_tmp = tf.einsum('ijkm,ijknm->ijkn',field_out_tens_tmp,scatter_tensor)
-    field_out_tens_tmp = TRANSFER_OPERATION(field_out_tens_tmp)
+    #produce constant tensors for scattering
+    r_1_t,r,p,boundary = MULTIPLE_CONSTANT_TENSORS(w_0,n_c,n_f)
 
-    field_out_tens_tmp = tf.reshape(field_out_tens_tmp,(n_x,n_y,n_z,n_c,1))
-    field_out_tens = field_out_tens_tmp
-    field_out_tens_tmp = tf.reshape(field_out_tens_tmp,(n_x,n_y,n_z,n_c))
+    #initial conditions of total electric accumulator and state variable
+    s_e_pre = tf.zeros([n_x,n_y,n_z,n_f//2],dtype = data_type)
+    x = tf.zeros([n_x,n_y,n_z,n_r*2,n_f//2],dtype = data_type)
 
-    #perform scatter operation
-    for t in np.arange(1,n_t):
-        source = field_in_tens[:,:,:,:,t]
-        field_out_tens_tmp = source + field_out_tens_tmp
+    #initilize field
+    f_time = np.zeros((n_x,n_y,n_z,n_f,0),dtype = np.float32)
+    v_i = tf.zeros([n_x,n_y,n_z,n_c],dtype = np.float32)
+    f = tf.zeros([n_x,n_y,n_z,n_f],dtype = np.float32)
 
-        field_out_tens_tmp = tf.einsum('ijkm,ijknm->ijkn',field_out_tens_tmp,scatter_tensor)
-        field_out_tens_tmp = tf.multiply(field_out_tens_tmp,boundary)
-        field_out_tens_tmp = TRANSFER_OPERATION(field_out_tens_tmp)
+    for t in range(n_t):
 
-        field_out_tens_tmp = tf.reshape(field_out_tens_tmp,(n_x,n_y,n_z,n_c,1))
-        field_out_tens = tf.concat( [field_out_tens,field_out_tens_tmp] , 4 )
-        field_out_tens_tmp = tf.reshape(field_out_tens_tmp,(n_x,n_y,n_z,n_c))
+        v_r,s_e_pre,x,f = NL_MULTIPLE_SCATTER(v_i,v_f[:,:,:,:,t],r_1_t,r,p,x,tra_ope,s_e_pre,sta_ope,f)    
 
-    return field_out_tens,boundary
+        v_i = TRANSFER(v_r)
 
-def PROPAGATE(field_in_tens,mesh,n_c,weight_tens,n_t,n_w):
-    # propagte the fields in STSN assuming a 1D simulation
-    # field_in_tens: input field tensor containing the field at all points in space and time - tf.constant tf.float##, shape(n_x,n_y,n_z,n_c,n_t)
-    # mesh: holds the mesh length values for all space - np.array int, shape(n_x,n_y,n_z,3)
-    # n_c: number of field componentes - int, shape(1)
-    # weight_tens: weights in all regions - tf.Variable tf.float##, shape(n_x,n_y,n_z,n_w)
+        f_tmp = tf.reshape(f,(n_x,n_y,n_z,n_f,1))
+        f_time = tf.concat( [f_time,f_tmp] , 4 )
+
+    f_final = f_tmp
+
+    return v_i , f_time , f_final
+
+def NL_MULTIPLE_PROPAGATE_TRAIN(v_f,inf_x,w_0,damp,del_x,x_nl,del_t,n_c,n_t,n_f,weights):
+    # propagte the voltages for a non-linear multiple resonant lorentz model (both scattering and transfer) with trained weights
+    # v_f: free-source fields , tf.constant - shape(n_x,n_y,n_z,n_f,n_t)
+    # inf_x: high frequency susceptibility tensor - np.constant, shape(n_x,n_y,n_z)
+    # w_0: Lorentz resonance frequency tensor (rad/s) - np.constant, shape(n_x,n_y,n_z,n_r)
+    # damp: Lorentz damping frequency tensor (rad/s) - np.constant, shape(n_x,n_y,n_z,n_r)
+    # del_x - the change in susceptibility (unitless) - np.float32, np.array, shape (n_x,n_y,n_z,n_r)
+    # x_nl: non-linear susceptibility - np.constant, shape(n_x,n_y,n_z)
+    # del_t - the time step of the simulation (s) - np.float32, shape(1,)
+    # n_c: number of voltage components - int, shape(1,)
     # n_t: number of time steps - int, shape(1,)
-    # n_w: number of weight steps - int, shape(1,)
-
-    #spatial steps
-    n_x,n_y,n_z,_ = np.shape(mesh)
-
-    #produce constant tensors for scatter and transfer operations
-    a1,a2,a3,a4,a5,a6,filter_d_tens,filter_b_tens,ones_tens,beta1_tens,beta2_tens,_ = CONSTANT_TENSORS(mesh,n_c)
-
-    #create scatter tensor
-    scatter_tensor = SCATTER(weight_tens,a1,a2,a3,a4,a5,a6,filter_d_tens,filter_b_tens,ones_tens,n_c,n_x,n_y,n_z,n_w,beta1_tens,beta2_tens)
+    # n_f: number of field components at each point in space - int, shape(1,)
+    # weights: material index for each position - shape(n_x,n_y,n_z)
+    #
+    # v_i: voltage incident - tf.constant, shape(n_x,n_y,n_z,n_c)
+    # f_time: total fields for all time - tf.constant, shape(n_x,n_y,n_z,n_f,n_t)
+    # f_final: total fields at last time step - tf.constant, shape(n_x,n_y,n_z,n_f)
     
-    #keep field_out_tens_tmp a rank 4 tensor
-    field_out_tens_tmp = 0*field_in_tens[:,:,:,:,0]
+    #get spatial steps and number of resonances
+    n_x,n_y,n_z,n_r = np.shape(w_0)
+    
+    #determine the electrical dispersion state variable operators
+    sta_ope , tra_ope = NL_ELECTRIC_DISPERSION_OPERATORS_TRAIN(w_0,damp,del_x,del_t,inf_x,x_nl,weights)
 
-    #initilize field_out_tens
-    source = field_in_tens[:,:,:,:,0]
-    field_out_tens_tmp = source + field_out_tens_tmp
+    #produce constant tensors for scattering
+    r_1_t,r,p,boundary = MULTIPLE_CONSTANT_TENSORS(w_0,n_c,n_f)
 
-    field_out_tens_tmp = tf.einsum('ijkm,ijknm->ijkn',field_out_tens_tmp,scatter_tensor)
-    field_out_tens_tmp = TRANSFER_OPERATION(field_out_tens_tmp)
+    #initial conditions of total electric accumulator and state variable
+    s_e_pre = tf.zeros([n_x,n_y,n_z,n_f//2],dtype = data_type)
+    x = tf.zeros([n_x,n_y,n_z,n_r*2,n_f//2],dtype = data_type)
 
-    field_out_tens_tmp = tf.reshape(field_out_tens_tmp,(n_x,n_y,n_z,n_c,1))
-    field_out_tens = field_out_tens_tmp
-    field_out_tens_tmp = tf.reshape(field_out_tens_tmp,(n_x,n_y,n_z,n_c))
+    #initilize field
+    f_time = np.zeros((n_x,n_y,n_z,n_f,0),dtype = np.float32)
+    v_i = tf.zeros([n_x,n_y,n_z,n_c],dtype = np.float32)
+    f = tf.zeros([n_x,n_y,n_z,n_f],dtype = np.float32)
 
-    #perform scatter operation
-    for t in np.arange(1,n_t):
-        source = field_in_tens[:,:,:,:,t]
-        field_out_tens_tmp = source + field_out_tens_tmp
+    for t in range(n_t):
 
-        field_out_tens_tmp = tf.einsum('ijkm,ijknm->ijkn',field_out_tens_tmp,scatter_tensor)
-        field_out_tens_tmp = TRANSFER_OPERATION(field_out_tens_tmp)
+        v_r,s_e_pre,x,f = NL_MULTIPLE_SCATTER(v_i,v_f[:,:,:,:,t],r_1_t,r,p,x,tra_ope,s_e_pre,sta_ope,f)    
 
-        field_out_tens_tmp = tf.reshape(field_out_tens_tmp,(n_x,n_y,n_z,n_c,1))
-        field_out_tens = tf.concat( [field_out_tens,field_out_tens_tmp] , 4 )
-        field_out_tens_tmp = tf.reshape(field_out_tens_tmp,(n_x,n_y,n_z,n_c))
+        v_i = TRANSFER(v_r)
 
-    return field_out_tens
+        f_tmp = tf.reshape(f,(n_x,n_y,n_z,n_f,1))
+        f_time = tf.concat( [f_time,f_tmp] , 4 )
 
-def MASK(mask_start,mask_end,field_tens,n_x,n_y,n_z,n_c,data_type):
+    f_final = f_tmp
 
-    mask_start_x = mask_start[0]
-    mask_start_y = mask_start[1]
-    mask_start_z = mask_start[2]
-
-    mask_end_x = mask_end[0]
-    mask_end_y = mask_end[1]
-    mask_end_z = mask_end[2]
-
-    mask = np.ones((n_x,n_y,n_z,n_c),dtype = data_type)
-    mask[mask_start_x:mask_end_x+1,mask_start_y:mask_end_y+1,mask_start_z:mask_end_z+1,:] = np.zeros((mask_end_x-mask_start_x + 1,mask_end_y-mask_start_y + 1,mask_end_z-mask_start_z + 1,n_c),dtype = data_type)
-
-    mask_field_tens = tf.multiply(mask,field_tens)
-
-    return mask_field_tens
-
-
-
-
-
+    return v_i , f_time , f_final
