@@ -113,4 +113,3 @@ def WEIGHT_INDEXING(weights,a_mat,b_mat,c_mat,d_mat):
 	d = tf.reshape(tf.gather_nd(d_mat,index_d,name=None),[n_x,n_y,n_z])
 
 	return a , b , c , d
-

@@ -76,7 +76,7 @@ n_x = 1
 n_y = 200
 n_z = 1
 
-n_t = 100
+n_t = 500
 
 # ------------------------------- ------------------------------ #
 # ---------------------- Source Parameters --------------------- #
@@ -86,7 +86,7 @@ c0 = 2.99792458e8
 location = (0,100,0)
 polarization = 2
 wavelength = 1.500e-6
-n_wavelength = 50
+n_wavelength = 60
 injection_axis = 1
 injection_direction = 0
 fwhm = 0.5*wavelength/c0
@@ -122,13 +122,14 @@ mat_par = [n_r,inf_x_mat,w_0_mat,damp_mat,del_x_mat,x_nl,mask_start,mask_end,n_m
 # ------------------------------- ------------------------------ #
 
 lr = 0.01
-epochs = 60
+epochs = 5000
 
 train_par = [lr,epochs]
+
+loss_path = "testing_R1/nt_"+str(n_t)+"_nw_"+str(n_wavelength)+"_epochs_"+str(epochs)
 
 # ------------------------------- ------------------------------ #
 # --------------------- Run Multiple Inverse ------------------- #
 # ------------------------------- ------------------------------ #
 
-INVERSE(n_x,n_y,n_z,n_t,del_l,source_par,mat_par,train_par)
-
+INVERSE(n_x,n_y,n_z,n_t,del_l,source_par,mat_par,train_par,loss_path)

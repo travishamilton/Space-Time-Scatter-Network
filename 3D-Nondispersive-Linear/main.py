@@ -22,13 +22,13 @@ import pickle
 
 data_type = np.float32
 
-os.environ['TF_CPP_MIN_LOG_LEVEL']='2'				# clears Tensorflow CPU for my mac Unix terminal
-os.system('cls' if os.name == 'nt' else 'clear')	# clears the terminal window screen (clc equiv. to MATLAB)
+os.environ['TF_CPP_MIN_LOG_LEVEL']='2'              # clears Tensorflow CPU for my mac Unix terminal
+os.system('cls' if os.name == 'nt' else 'clear')    # clears the terminal window screen (clc equiv. to MATLAB)
 
-tf.reset_default_graph()							#reset tensorflow
+tf.reset_default_graph()                            #reset tensorflow
 
-np.random.seed(7)		# seeding the random number generator to reproduce identical results
-tf.set_random_seed(7)	# seed Tensorflow random numebr generator as well
+np.random.seed(7)       # seeding the random number generator to reproduce identical results
+tf.set_random_seed(7)   # seed Tensorflow random numebr generator as well
 
 ### ---------------Global Constants ---------------------------- ###
 n_f = 6                       #number of field components at node
@@ -107,7 +107,7 @@ def FORWARD(n_x,n_y,n_z,n_t,del_l,source_par,mat_par):
 
         #PLOT_SPECTRUM_Z(fig_num = 9,f_time = f_time ,location = [0,1100,0],del_t = del_t)
 
-def INVERSE(n_x,n_y,n_z,n_t,del_l,source_par,mat_par,train_par):
+def INVERSE(n_x,n_y,n_z,n_t,del_l,source_par,mat_par,train_par,loss_path):
     # performs a inverse linear multiple Lorentz resonace simulation
     # n_x: number of spatial parameters in the x or 0th axis direction - tf.constant (int), shape(1,)
     # n_y: number of spatial parameters in the y or 1st axis direction - tf.constant (int), shape(1,)
@@ -181,6 +181,11 @@ def INVERSE(n_x,n_y,n_z,n_t,del_l,source_par,mat_par,train_par):
 
             print('Epoch: ',i)
             print('Loss: ',loss_value)
+
+            results = [loss_value,weights,spectrum_1,spectrum_2]
+
+            with open(loss_path+"/epoch_"+(str(i))+".pkl","wb") as f:
+                pickle.dump(results, f, pickle.HIGHEST_PROTOCOL)
     
     plt.show()
 

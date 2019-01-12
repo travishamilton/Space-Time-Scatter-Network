@@ -305,11 +305,17 @@ def SPECTRUM_Z(f_time,del_t,n_t,freq_1,freq_2):
     sp = sp[:,:,:,0:l//2-1]
 
     #find frequency values
+    if freq_1 > freq[len(freq)-1] or freq_2 > freq[len(freq)-1]:
+        raise ValueError("Selected frequency values are out of range")
+
     for i in range(len(freq)):
-        if freq[i] + df >= freq_1 and freq[i] <= freq_1:
+        if freq[i] >= freq_1:
             index_1 = i
-        if freq[i] + df >= freq_2 and freq[i] <= freq_2:
+            break
+    for i in range(len(freq)):
+        if freq[i] >= freq_2:
             index_2 = i
+            break
 
     #give spectrum vs. space for frequencty values
     sp_1 = sp[0,:,0,index_1]
