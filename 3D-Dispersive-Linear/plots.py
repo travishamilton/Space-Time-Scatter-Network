@@ -4,32 +4,38 @@ import matplotlib.animation as animation
 
 #from fields import SCATTER_2_ELECTRIC_NODES
 
-def PLOT_TIME_SOURCE(v_f,time_source,e_time_source,del_l,fig_num):
-#plots the source over time in terms of electric field components
-#time_source - holds the sources scatter components at each time step - np.array, shape(n_t,n_f)
-#del_l - space step in all three directions - float
+def PLOT_TIME_SOURCE(v_f,time_source,current_density,del_l,fig_num,location,del_t):
+    #plots the source over time in terms of electric field components
+    #time_source - holds the sources scatter components at each time step - np.array, shape(n_t,n_f)
+    #del_l - space step in all three directions - float
 
     n_t,n_f = np.shape(time_source)
     eta_0 = 119.9169832*np.pi
 
     plt.figure(fig_num[0])
-    plt.plot(v_f[0,1,0,2])
-    plt.title('free source fields - z component')
+    plt.plot(np.arange(n_t)*del_t*1.0e15,-v_f[location[0],location[1],location[2],2,:]/del_l)
+    plt.ylabel('V/m')
+    plt.xlabel('fs')
+    plt.title('free source fields at source location - z component')
 
     plt.figure(fig_num[1])
-    plt.plot(-time_source[:,2]/(del_l**2 * eta_0))
-    plt.title('free electric current density - z component')
+    plt.plot(np.arange(n_t)*del_t*1.0e15,time_source[:,2])
+    plt.ylabel('V')
+    plt.xlabel('fs')
+    plt.title('free voltage source - z component')
 
     plt.figure(fig_num[2])
-    plt.plot(e_time_source)
-    plt.title('electric field time signal')
+    plt.plot(np.arange(n_t)*del_t*1.0e15,current_density)
+    plt.ylabel('A/m^2')
+    plt.xlabel('fs')
+    plt.title('current density')
 
-def PLOT_TIME_SOURCE_LUMERICAL(v_f,fig_num):
-#plots the source over time in terms of electric field components
-#time_source - holds the sources scatter components at each time step - np.array, shape(n_t,n_f)
+def PLOT_TIME_SOURCE_LUMERICAL(v_f,fig_num,location):
+    #plots the source over time in terms of electric field components
+    #time_source - holds the sources scatter components at each time step - np.array, shape(n_t,n_f)
 
     plt.figure(fig_num)
-    plt.plot(v_f[0,1,0,2])
+    plt.plot(v_f[location[0],location[1],location[2],2])
     plt.title('free source fields - z component')
 
 
@@ -37,7 +43,8 @@ def PLOT_RESULTS_2(f_final,del_l,fig_num):
 
     plt.figure(fig_num)
     plt.plot(np.squeeze(-f_final/del_l), 'b')
-    plt.title('final field value - z direction')
+    plt.ylabel('V/m')
+    plt.title('final field value - z polarized')
 
 def PLOT_VIDEO_1D(f_time,del_l,fig_num):
 
@@ -52,15 +59,16 @@ def PLOT_VIDEO_1D(f_time,del_l,fig_num):
 
         im, = plt.plot(np.squeeze(-f_time[:,:,:,t]/del_l), 'b',animated=True)
         plt.title('Lorentz Dielectric - Wrapping Boundary Conditions')
-        #plt.ylim(-2,2)
+        plt.ylabel('V/m')
 
         ims.append([im])
 
     ani = animation.ArtistAnimation(fig, ims, interval=50, blit=True,
                                     repeat_delay=1000)
 
-    ani.save("foward_movie.mp4")
     plt.show()
+
+    ani.save("foward_movie.mp4")
 
 def PLOT_COMPARISON_VIDEO_1D(f_time,f_lumerical_time,del_l,fig_num):
 
@@ -141,8 +149,6 @@ def PLOT_DISPERSION_PARAMETERS_1D(inf_x,w_0,damp,del_x,fig_num):
         plt.title("Susceptibility for each Resonance")
 
     plt.legend()
-    
-    plt.show()
 
     #resonant frequency
     plt.figure(fig_num[1])
@@ -157,8 +163,33 @@ def PLOT_DISPERSION_PARAMETERS_1D(inf_x,w_0,damp,del_x,fig_num):
         plt.title("frequency")
     
     plt.legend()
-    
+
+def PLOT_SPECTRUM_Z(fig_num,f_time,location,del_t):
+    # fig_num: the figure number
+    # f_time: the field over all time - shape(n_x,n_y,n_z,6,n_t)
+    # location: the location of the point monitor - shape(3,)
+
+    #get number of time steps
+    _,_,_,_,n_t = np.shape(f_time)
+
+    plt.figure(fig_num)
+
+    #determine location
+    x = location[0]
+    y = location[1]
+    z = location[2]
+
+    time_signal = f_time[x,y,z,2,:]
+
+    t = np.arange(0,del_t*n_t,del_t)
+    sp = np.fft.fft(time_signal)
+    freq = np.fft.fftfreq(t.shape[-1])
+    l = len(freq)
+    plt.plot(10**-12*freq[0:l//2-1]/del_t, np.abs(sp[0:l//2-1]))
+    plt.xlabel('THz')
+    plt.ylabel('Spectrum')
     plt.show()
+    
 
     
 

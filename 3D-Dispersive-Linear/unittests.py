@@ -6,7 +6,9 @@ from scipy.signal import ss2tf
 
 import tensorflow as tf
 
-from layers import CONSTANT_TENSORS , LORENTZ_TRANSFER_FUNCTION , STATE_OPERATORS , MULTIPLE_LORENTZ , ELECTRIC_DISPERSION_OPERATORS , LORENTZ , SUM_RATIONAL_POLY , MULTIPLE_TRANSMISSION , MULTIPLE_SCATTER , MULTIPLE_LORENTZ_2
+#from layers_3 import CONSTANT_TENSORS , LORENTZ_TRANSFER_FUNCTION , STATE_OPERATORS , MULTIPLE_LORENTZ , ELECTRIC_DISPERSION_OPERATORS , LORENTZ , CHI_2_NON_LINEAR, SUM_RATIONAL_POLY , MULTIPLE_TRANSMISSION , MULTIPLE_SCATTER , MULTIPLE_LORENTZ_2
+
+from layers import SPECTRUM_Z  , TRAPZ_2D , OVERLAP_INTEGRAL , FIND_CLOSEST
 
 data_type = np.float32
 
@@ -65,32 +67,59 @@ def TENSOR_MULTIPLICATION_NUMPY(matrix_tensor,vector_tensor_1,vector_tensor_2,co
 
 def MULTIPLE_LORENTZ_NUMPY(f,x,a,b,c,d):
     # calculates an electrical dielectric accumulator for Lorentz model with multiple resonances
-    # f: total fields - np.constant, shape (n_x,n_y,n_z,n_f/2)
-    # x: state variable tensor - np.constant, shape (n_x,n_y,n_z,n_f/2,n_o)
-    # a: constant tensor operating on x to update x - shape(n_x,n_y,n_z,n_f/2,n_o,n_o)
-    # b: constant tensor operating on f to update x - shape(n_x,n_y,n_z,n_f/2,n_o)
-    # c: constant tensor operating on x to update s_e_d - shape(n_x,n_y,n_z,n_f/2,n_o)
-    # d: constant tensor operating on f to update s_e_d - shape(n_x,n_y,n_z,n_f/2)
+    # f: total fields - np.constant, shape (n_x,n_y,n_z)
+    # x: state variable tensor - np.constant, shape (n_x,n_y,n_z,n_o)
+    # a: constant tensor operating on x to update x - shape(n_x,n_y,n_z,n_o,n_o)
+    # b: constant tensor operating on f to update x - shape(n_x,n_y,n_z,n_o)
+    # c: constant tensor operating on x to update s_e_d - shape(n_x,n_y,n_z,n_o)
+    # d: constant tensor operating on f to update s_e_d - shape(n_x,n_y,n_z)
     #
-    # s_e_d: the electrical dielectric accumulator - shape(n_x,n_y,n_z,n_f/2)
-    # x_next: state variable tensor at the next time step - shape (n_x,n_y,n_z,n_f/2,n_o)
+    # s_e_d: the electrical dielectric accumulator - shape(n_x,n_y,n_z)
+    # x_next: state variable tensor at the next time step - shape (n_x,n_y,n_z,n_o)
     
     #get shape parameters
-    n_x,n_y,n_z,n_f_e,n_o = np.shape(x)
+    n_x,n_y,n_z,n_o = np.shape(x)
+    x = x[:,:,:,:,np.newaxis]
 
     #initilize
-    x_next = np.zeros((n_x,n_y,n_z,n_f_e,n_o),dtype = data_type)
-    s_e_d = np.zeros((n_x,n_y,n_z,n_f_e),dtype = data_type)
+    x_next = np.zeros((n_x,n_y,n_z,n_o,1),dtype = data_type)
+    s_e_d = np.zeros((n_x,n_y,n_z),dtype = data_type)
 
     #calculate
     for xi in range(n_x):
         for y in range(n_y):
             for z in range(n_z):
-                for fi in range(n_f_e):
-                    x_next[xi,y,z,fi,:] = a[xi,y,z,fi,:,:]@x[xi,y,z,fi,:] + b[xi,y,z,fi,:]*f[xi,y,z,fi]
-                    s_e_d[xi,y,z,fi] = c[xi,y,z,fi,:]@x[xi,y,z,fi,:] + d[xi,y,z,fi]*f[xi,y,z,fi]
+                    x_next[xi,y,z,:,0] = a[xi,y,z,:,:]@x[xi,y,z,:,0] + b[xi,y,z,:]*f[xi,y,z]
+                    s_e_d[xi,y,z] = c[xi,y,z,:]@x[xi,y,z,:,0] + d[xi,y,z]*f[xi,y,z]
 
-    return s_e_d , x_next
+    return s_e_d , x_next[:,:,:,:,0]
+
+def MULTIPLE_LORENTZ_SINGLE_INPUT_NUMPY(f,x,a,b,c,d):
+    # calculates an electrical dielectric accumulator for Lorentz model with multiple resonances
+    # f: total fields - np.constant, shape (1,)
+    # x: state variable tensor - np.constant, shape (n_o,)
+    # a: constant tensor operating on x to update x - shape(n_o,n_o)
+    # b: constant tensor operating on f to update x - shape(n_o,)
+    # c: constant tensor operating on x to update s_e_d - shape(n_o,)
+    # d: constant tensor operating on f to update s_e_d - shape(1,)
+    #
+    # s_e_d: the electrical dielectric accumulator - shape(1,)
+    # x_next: state variable tensor at the next time step - shape (n_o,)
+    
+    #get shape parameters
+    # x = x[:,np.newaxis]
+        
+    # x_next = a@x + b*f
+    # s_e_d = c@x + d*f
+
+    #calculate state variable
+    x_next = np.einsum('mn,n->m',a,x) + b*f
+
+    #calculate the electrical dielectric accumulator
+    s_e_d = np.tensordot(c,x,[[0],[0]]) + d*f
+
+    #return s_e_d,x_next[:,0]
+    return s_e_d,x_next
 
 def TRANSFER_FUNCTION_VARIABLES(w_0,damp,del_x,del_t):
     # calculates the transfer function variables
@@ -140,14 +169,31 @@ def SUM_POLY_NUMPY(num,den,x):
 
 def PERCENT_ERROR(A,B):
 
-    percent_error_max = np.amax( np.abs( (A - B) ) )
+    difference = np.amax( np.abs( (A - B) ) )
+    
+    return difference
 
-    return percent_error_max
+def LORENTZ_LINEARITY(U,X,A,B,C,D,n_t):
+    X = tf.convert_to_tensor(X)
+    X = X[:,:,:,:,0]
+    for t in range(n_t):
+        Y , X_next = MULTIPLE_LORENTZ(U[:,:,:,0,t],X,A,B,C,D)
+        X = X_next
+
+    return Y,X
+
+def LORENTZ_LINEARITY_NUMPY(U,X,A,B,C,D,n_t):
+    X = X[:,:,:,:,0]
+    for t in range(n_t):
+        Y , X_next = MULTIPLE_LORENTZ_NUMPY(U[:,:,:,0,t],X,A,B,C,D)
+        X = X_next
+
+    return Y,X
 
 # ----------------------- unittest class ------------------------ #
 class Test(unittest.TestCase):
 
-    def test_einsum(self):
+    def test_einsum_check(self):
 
         success = True
 
@@ -163,18 +209,25 @@ class Test(unittest.TestCase):
             vector_tensor_2_np = np.float32(np.random.rand(n_x,n_y,n_z,n_f))
             constant_np = np.float32(np.random.rand(n_x,n_y,n_z))
 
+            vector_np = np.float32(np.random.rand(n_c))
+            matrix_np = np.float32(np.random.rand(n_c,n_c))
+
             matrix_tensor_tf = tf.convert_to_tensor(matrix_tensor_np,dtype = np.float32)
             vector_tensor_tf = tf.convert_to_tensor(vector_tensor_np,dtype = np.float32)
             vector_tensor_2_tf = tf.convert_to_tensor(vector_tensor_2_np,dtype = np.float32)
             constant_tf = tf.convert_to_tensor(constant_np,dtype = np.float32)
+            vector_tf = tf.convert_to_tensor(vector_np,dtype = np.float32)
+            matrix_tf = tf.convert_to_tensor(matrix_np,dtype = np.float32)
 
             #calculate einsum in both numpy and tensorflow using einsum and for loops
             results_1_np = np.einsum('ijkmn,ijkn -> ijkm',matrix_tensor_np,vector_tensor_np)
             results_2_np , results_3_np , results_4_np = TENSOR_MULTIPLICATION_NUMPY(matrix_tensor_np,vector_tensor_np,vector_tensor_2_np,constant_np)
+            results_5_np = np.matmul(matrix_np,vector_np)
             results_tf = tf.einsum('ijkmn,ijkn -> ijkm',matrix_tensor_tf,vector_tensor_tf)
             results_2_tf = tf.einsum('ijkn,ijkmn -> ijkm',vector_tensor_tf,matrix_tensor_tf)
             results_3_tf = tf.einsum('ijko,ijko->ijk',vector_tensor_tf,vector_tensor_2_tf)
             results_4_tf = tf.einsum('ijko,ijk->ijko ',vector_tensor_2_tf,constant_tf)
+            results_5_tf = tf.einsum('mn,n->m',matrix_tf,vector_tf)
 
             #convert tensorflow results back to numpy
             with tf.Session() as sess:
@@ -183,13 +236,38 @@ class Test(unittest.TestCase):
                 results_2_tf = sess.run(results_2_tf)
                 results_3_tf = sess.run(results_3_tf)
                 results_4_tf = sess.run(results_4_tf)
+                results_5_tf = sess.run(results_5_tf)
 
                 #compare tensorflow and with numpy results
-                success = np.amax(results_1_np-results_tf) < 5.0e-6 and np.amax(results_2_np-results_1_np) < 5.0e-6 and np.amax(results_tf - results_2_tf) < 5.0e-6 and np.amax(results_3_tf - results_3_np) < 5.0e-6 and np.amax(results_4_tf - results_4_np) < 5.0e-6 and success
+                success = np.amax(results_1_np-results_tf) < 5.0e-6 and np.amax(results_2_np-results_1_np) < 5.0e-6 and np.amax(results_tf - results_2_tf) < 5.0e-6 and np.amax(results_3_tf - results_3_np) < 5.0e-6 and np.amax(results_4_tf - results_4_np) < 5.0e-6 and np.amax(results_5_tf - results_5_np) < 5.0e-6 and success
 
         self.assertEqual(success, True)
 
-    def test_multiply(self):
+    def test_tensordot_check(self):
+
+        success = True
+
+        for _ in range(10):
+
+            #numpy calculation
+            n_c = 12
+            vector_tensor_1_np = np.float32(np.random.rand(n_c))
+            vector_tensor_2_np = np.float32(np.random.rand(n_c))
+            result_np = np.sum(vector_tensor_1_np*vector_tensor_2_np)
+
+            #tensorflow calculation
+            vector_tensor_1 = tf.convert_to_tensor(vector_tensor_1_np)
+            vector_tensor_2 = tf.convert_to_tensor(vector_tensor_2_np)
+            result = tf.tensordot(vector_tensor_1,vector_tensor_2,[[0],[0]])
+
+            with tf.Session() as sess:
+                result = sess.run(result)
+
+            success = np.amax(result-result_np) < 5.0e-6 and success
+
+        self.assertEqual(success, True)
+
+    def test_multiply_check(self):
 
         success = True
 
@@ -199,12 +277,12 @@ class Test(unittest.TestCase):
 
         #build random tensor/constants
         tensor_np = np.float32(np.random.rand(n_x,n_y,n_z,n_c))
-        constant_np = np.float32(2)
+        constant_np = np.float32(2.233)
 
         tensor_tf = tf.convert_to_tensor(tensor_np)
         constant_tf = tf.convert_to_tensor(constant_np)
 
-        #calculate multiplicatio in both tensorflow and numpy
+        #calculate multiplication in both tensorflow and numpy
         results_np = tensor_np*constant_np
         results_tf = tensor_tf*constant_tf
 
@@ -440,6 +518,107 @@ class Test(unittest.TestCase):
 
         self.assertEqual(success, True)
 
+    def test_single_input_lorentz_functions(self):
+        success = True
+
+        #field and simulation parameters
+        n_c = 12
+        n_f = 6
+        n_r = 3
+        n_o = 2*n_r
+        del_t = 1.0e-12
+        n_t = 50
+
+        #build random tensors
+        inf_x = np.float32(np.random.rand(1,1,1,1,))
+        w_0 = np.float32(np.random.rand(1,1,1,n_r))*10**12
+        damp = 0.2*w_0
+        del_x = np.float32(np.random.rand(1,1,1,n_r))
+        x = 0*np.float32(np.random.rand(n_o))
+
+        #produce a linear combination of inputs
+        alpha , beta = map(int, np.random.randint(low=1, high=50, size=2))
+        f1 = tf.convert_to_tensor(np.float32(np.random.rand(n_t)))
+        f2 = tf.convert_to_tensor(np.float32(np.random.rand(n_t)))
+        f = tf.convert_to_tensor(alpha*f1+beta*f2)
+
+        #produce operators
+        sta_ope , tra_ope = ELECTRIC_DISPERSION_OPERATORS(w_0,damp,del_x,del_t,inf_x)
+        A = sta_ope[0][0,0,0,:,:]
+        B = sta_ope[1][0,0,0,:]
+        C = sta_ope[2][0,0,0,:]
+        D = sta_ope[3][0,0,0]
+
+        #compute in tensorflow
+        x = tf.zeros(n_o)
+        for t in range(n_t):
+            s_e_d1,x_next = MULTIPLE_LORENTZ_2(f1[t],x,A,B,C,D)
+            x = x_next
+
+        x = tf.zeros(n_o)
+        for t in range(n_t):
+            s_e_d2,x_next = MULTIPLE_LORENTZ_2(f2[t],x,A,B,C,D)
+            x = x_next
+
+        x = tf.zeros(n_o)
+        for t in range(n_t):
+            s_e_d,x_next = MULTIPLE_LORENTZ_2(f[t],x,A,B,C,D)
+            x = x_next
+
+        with tf.Session() as sess:
+
+            #computer in numpy
+            A_np = sess.run(A)
+            B_np = sess.run(B)
+            C_np = sess.run(C)
+            D_np = sess.run(D)
+            f1_np = sess.run(f1)
+            f2_np = sess.run(f2)
+            f_np = sess.run(f)
+
+            print('Shape of A: ',np.shape(A_np))
+            print('Shape of B: ',np.shape(B_np))
+            print('Shape of C: ',np.shape(C_np))
+            print('Shape of D: ',np.shape(D_np))
+
+            x_np = np.zeros(n_o)
+            for t in range(n_t):
+                s_e_d1_np,x_next_np = MULTIPLE_LORENTZ_SINGLE_INPUT_NUMPY(f1_np[t],x_np,A_np,B_np,C_np,D_np)
+                x_np = x_next_np
+
+            x_np = np.zeros(n_o)
+            for t in range(n_t):
+                s_e_d2_np,x_next_np = MULTIPLE_LORENTZ_SINGLE_INPUT_NUMPY(f2_np[t],x_np,A_np,B_np,C_np,D_np)
+                x_np = x_next_np
+
+            x_np = np.zeros(n_o)
+            for t in range(n_t):
+                s_e_d_np,x_next_np = MULTIPLE_LORENTZ_SINGLE_INPUT_NUMPY(f_np[t],x_np,A_np,B_np,C_np,D_np)
+                x_np = x_next_np
+
+            #compare numpy and tensorflow results
+            s_e_d = sess.run(s_e_d)
+            s_e_d1 = sess.run(s_e_d1)
+            s_e_d2 = sess.run(s_e_d2)
+            x_next = sess.run(x_next)
+
+            print('Shape of x_next: ',np.shape(x_next))
+            print('Shape of s_e_d: ',np.shape(s_e_d))
+
+            print('the tensorflow error is: ',s_e_d - alpha*s_e_d1 - beta*s_e_d2)
+            print('the numpy error is: ',s_e_d_np - alpha*s_e_d1_np - beta*s_e_d2_np)
+
+            print('the tensorflow accumulator is: ',s_e_d)
+            print('the numpy accumulator is: ',s_e_d_np)
+
+            print('the tensorflow accumulator 1 is: ',s_e_d1)
+            print('the numpy accumulator 1 is: ',s_e_d1_np)
+
+            print('the tensorflow accumulator 2 is: ',s_e_d2)
+            print('the numpy accumulator 2 is: ',s_e_d2_np)
+
+        self.assertEqual(success, True)
+                
     def test_lorentz_functions_check(self):
         #test the MULTIPLE_LORENTZ and LORENTZ functions for a single resonance
 
@@ -448,11 +627,11 @@ class Test(unittest.TestCase):
         #position and field arguments
         n_c = 12
         n_f = 6
-        n_r = 1
+        n_r = 3
         n_o = 2*n_r
         n_x, n_y, n_z , alpha , beta = map(int, np.random.randint(low=1, high=50, size=5))
         del_t = 1.0e-12
-        n_t = 300
+        n_t = 30
 
         #build random tensors
         inf_x = np.float32(np.random.rand(n_x,n_y,n_z))
@@ -466,9 +645,10 @@ class Test(unittest.TestCase):
         #produce a linear combination of inputs
         f1 = np.float32(np.random.rand(n_x,n_y,n_z,n_f//2,n_t))
         f2 = np.float32(np.random.rand(n_x,n_y,n_z,n_f//2,n_t))
+        f = alpha*f1+beta*f2
 
         #convert state variable and field to tensors
-        f_tf_comb = tf.convert_to_tensor(alpha*f1+beta*f2)
+        f_tf = tf.convert_to_tensor(alpha*f1+beta*f2)
         f1_tf = tf.convert_to_tensor(f1)
         f2_tf = tf.convert_to_tensor(f2)
         
@@ -476,46 +656,13 @@ class Test(unittest.TestCase):
         sta_ope , tra_ope = ELECTRIC_DISPERSION_OPERATORS(w_0,damp,del_x,del_t,inf_x)
 
         #produce linearily combined electrical dielectric accumulator over three time steps
-        x_tf = tf.convert_to_tensor(x)
-        x_1_pre_tf = tf.convert_to_tensor(x_1_pre)
-        x_2_pre_tf = tf.convert_to_tensor(x_2_pre)
-        #x_tf = x_tf[:,:,:,:,0]
-        x_tf = tf.reshape([x_tf[0,0,0,:,0]],[2,1])
-        for t in range(n_t):
-            s_e_d , x_next = MULTIPLE_LORENTZ_2(f_tf_comb[:,:,:,0,t],x_tf,sta_ope[0],sta_ope[1],sta_ope[2],sta_ope[3])
-            x_tf = x_next
-            #s_d , x_1_pre_tf , x_2_pre_tf = LORENTZ(f_tf_comb[:,:,:,0:1,t],w_0[:,:,:,0:1],damp[:,:,:,0:1],del_x[:,:,:,0:1],del_t,x_1_pre_tf,x_2_pre_tf)
-
-        s_e_d_comb = s_e_d
-        #s_d_comb = s_d
+        s_e_d_tf,x_next_tf = LORENTZ_LINEARITY(f_tf,x,sta_ope[0],sta_ope[1],sta_ope[2],sta_ope[3],n_t)
 
         #produce electrical dielectric accumulator over three time steps
-        x_tf = tf.convert_to_tensor(x)
-        x_1_pre_tf = tf.convert_to_tensor(x_1_pre)
-        x_2_pre_tf = tf.convert_to_tensor(x_2_pre)
-        #x_tf = x_tf[:,:,:,:,0]
-        x_tf = tf.reshape([x_tf[0,0,0,:,0]],[2,1])
-        for t in range(n_t):
-            s_e_d , x_next = MULTIPLE_LORENTZ_2(alpha*f1_tf[:,:,:,0,t],x_tf,sta_ope[0],sta_ope[1],sta_ope[2],sta_ope[3])
-            x_tf = x_next
-            #s_d , x_1_pre_tf , x_2_pre_tf = LORENTZ(alpha*f1_tf[:,:,:,0:1,t],w_0[:,:,:,0:1],damp[:,:,:,0:1],del_x[:,:,:,0:1],del_t,x_1_pre_tf,x_2_pre_tf)
-
-        s1_e_d = s_e_d
-        #s1_d = s_d
+        s1_e_d_tf,x1_next_tf = LORENTZ_LINEARITY(f1_tf,x,sta_ope[0],sta_ope[1],sta_ope[2],sta_ope[3],n_t)
 
         #produce electrical dielectric accumulator over three time steps
-        x_tf = tf.convert_to_tensor(x)
-        x_1_pre_tf = tf.convert_to_tensor(x_1_pre)
-        x_2_pre_tf = tf.convert_to_tensor(x_2_pre)
-        #x_tf = x_tf[:,:,:,:,0]
-        x_tf = tf.reshape([x_tf[0,0,0,:,0]],[2,1])
-        for t in range(n_t):
-            s_e_d , x_next = MULTIPLE_LORENTZ_2(beta*f2_tf[:,:,:,0,t],x_tf,sta_ope[0],sta_ope[1],sta_ope[2],sta_ope[3])
-            x_tf = x_next
-            #s_d , x_1_pre_tf , x_2_pre_tf = LORENTZ(beta*f2_tf[:,:,:,0:1,t],w_0[:,:,:,0:1],damp[:,:,:,0:1],del_x[:,:,:,0:1],del_t,x_1_pre_tf,x_2_pre_tf)
-
-        s2_e_d = s_e_d
-        #s2_d = s_d
+        s2_e_d_tf,x2_next_tf = LORENTZ_LINEARITY(f2_tf,x,sta_ope[0],sta_ope[1],sta_ope[2],sta_ope[3],n_t)
 
         #calculate zeros and poles
         # A = sta_ope[0][0,0,0,:,:]
@@ -528,11 +675,24 @@ class Test(unittest.TestCase):
 
         with tf.Session() as sess:
 
-            s_e_d = sess.run(s_e_d)
-            x_next = sess.run(x_next)
-            s_e_d_comb = sess.run(s_e_d_comb)
-            s1_e_d = sess.run(s1_e_d)
-            s2_e_d = sess.run(s2_e_d)
+            a = sess.run(sta_ope[0])
+            b = sess.run(sta_ope[1])
+            c = sess.run(sta_ope[2])
+            d = sess.run(sta_ope[3])
+
+            #produce linearily combined electrical dielectric accumulator over three time steps
+            s_e_d,x_next = LORENTZ_LINEARITY_NUMPY(f,x,a,b,c,d,n_t)
+
+            #produce electrical dielectric accumulator over three time steps
+            s1_e_d,x1_next = LORENTZ_LINEARITY_NUMPY(f1,x,a,b,c,d,n_t)
+
+            #produce electrical dielectric accumulator over three time steps
+            s2_e_d,x2_next = LORENTZ_LINEARITY_NUMPY(f2,x,a,b,c,d,n_t)
+
+            s_e_d_tf = sess.run(s_e_d_tf)
+            s1_e_d_tf = sess.run(s1_e_d_tf)
+            s2_e_d_tf = sess.run(s2_e_d_tf)
+            x_next = sess.run(x_next_tf)
 
             # A = sess.run(A)
             # B = sess.run(B)
@@ -555,8 +715,9 @@ class Test(unittest.TestCase):
             success = np.array_equal(np.shape(s_e_d),np.array([n_x,n_y,n_z])) and np.array_equal(np.shape(x_next),np.array([n_x,n_y,n_z,n_o]))
 
             #test linearity of MULTIPLE LORENTZ state-space equation
-            success = PERCENT_ERROR(s_e_d_comb,s1_e_d + s2_e_d) < 1.0e-4 and success
-            print(PERCENT_ERROR(s_e_d_comb,s1_e_d + s2_e_d))
+            success = PERCENT_ERROR(s_e_d,alpha*s1_e_d + beta*s2_e_d) < 1.0e-4 and success
+            print(PERCENT_ERROR(s_e_d,alpha*s1_e_d + beta*s2_e_d))
+            print(PERCENT_ERROR(s_e_d_tf,alpha*s1_e_d_tf + beta*s2_e_d_tf))
             #print(PERCENT_ERROR(s_d_comb,s1_d + s2_d))
 
 
@@ -775,6 +936,338 @@ class Test(unittest.TestCase):
         print(tran_num_coeff[0,0,0,0,:])
         print(tran_den_coeff[0,0,0,0,:])
 
+
+        self.assertEqual(success, True)
+
+    def test_minimize(self):
+
+        success = True
+
+        f_per = np.array([[1,2],[1,3]])
+
+        f_per = tf.reduce_min(f_per,axis = -1)
+
+        with tf.Session() as sess:
+
+            f_per = sess.run(f_per)
+
+            print(f_per)
+
+        self.assertEqual(success, True)
+
+    def test_gather(self):
+
+        success = True
+
+        for _ in range(10):
+
+            n_m = 2
+            n_r = 2
+
+            n_x, n_y, n_z = map(int, np.random.randint(low=1, high=10, size=3))
+
+            param_1 = np.float32(np.random.rand(n_x,n_y,n_z,n_m))
+            param_2 = np.float32(np.random.rand(n_x,n_y,n_z,n_r,n_m))
+            index = np.random.randint(0, high=n_m-1, size=[n_x,n_y,n_z])
+            
+            output_1 = param_1[:,:,:,0]
+            output_2 = param_2[:,:,:,:,0]
+
+            for x in range(n_x):
+                for y in range(n_y):
+                    for z in range(n_z):
+                        output_1[x,y,z] = param_1[x,y,z,index[x,y,z]]
+                        output_2[x,y,z,:] = param_2[x,y,z,:,index[x,y,z]]
+
+            param_1_tf = tf.convert_to_tensor(param_1)
+            param_2_tf = tf.convert_to_tensor(param_2)
+            index_tf = tf.convert_to_tensor(index)
+
+            index_1_tf = [[0,0,0,index_tf[0,0,0]]]
+            index_2_tf = [[0,0,0,0,index_tf[0,0,0]]]
+
+            for x in range(n_x):
+                for y in range(n_y):
+                    for z in range(n_z):
+
+                        if x == 0 and y == 0 and z == 0:
+                            index_1_tf = index_1_tf
+                        else:
+                            index_1_tf = tf.concat([index_1_tf,[[x,y,z,index_tf[x,y,z]]]],0)
+
+                        for r in range(n_r):
+                            if x == 0 and y == 0 and z == 0 and r == 0:
+                                index_2_tf = index_2_tf
+                            else:
+                                index_2_tf = tf.concat([index_2_tf,[[x,y,z,r,index_tf[x,y,z]]]],0)
+
+            output_1_tf = tf.reshape(tf.gather_nd(param_1_tf,index_1_tf,name=None),[n_x,n_y,n_z])
+            output_2_tf = tf.reshape(tf.gather_nd(param_2_tf,index_2_tf,name=None),[n_x,n_y,n_z,n_r])
+
+            print('tf.shape of output_1_tf:',tf.shape(output_1_tf))
+
+            with tf.Session() as sess:
+
+                output_1_tf = sess.run(output_1_tf)
+                output_2_tf = sess.run(output_2_tf)
+
+                print('np.shape of output_1_tf:',np.shape(output_1_tf))
+                print('np.type of output_1_tf:',type(output_1_tf))
+                print('np.type of output_1_tf:',type(output_1_tf[0,0,0]))
+
+                success = np.array_equal(output_1_tf,output_1) and np.array_equal(output_2_tf,output_2) and success
+
+        self.assertEqual(success, True)
+
+    def test_non_linear(self):
+        #test the non-linear function
+        success = True
+
+        n_f = 6
+        n_x = 1
+        n_y = 120
+        n_z = 1
+        
+        x_nl = 1.0e-12*np.ones((n_x,n_y,n_z,n_f//2),dtype = data_type)
+        t = 2.0*np.ones((n_x,n_y,n_z,n_f//2),dtype = data_type)
+        u = np.float32(np.random.rand(n_x,n_y,n_z,n_f//2),dtype = data_type)
+        f_pre = np.float32(np.random.rand(n_x,n_y,n_z,n_f//2),dtype = data_type)
+
+        x_nl = tf.convert_to_tensor(x_nl)
+        t = tf.convert_to_tensor(t)
+        u = tf.convert_to_tensor(u)
+        f_pre = tf.convert_to_tensor(f_pre)
+
+        #chi 2 non-linearity
+        f = CHI_2_NON_LINEAR(x_nl,t,u,f_pre)
+
+        with tf.Session() as sess:
+
+            f = sess.run(f)
+            print(f[0,0,0,:])
+
+        self.assertEqual(success, True)
+
+    def test_spectrum(self):
+
+        success = True 
+
+        #spatial/time/field numbers
+        n_x = 1
+        n_y = 100
+        n_z = 1
+        n_f = 6
+        n_t = 100
+
+        #time step
+        del_t = 1.0e-12
+
+        #frequency values
+        freq_1 = 0.2/del_t
+        freq_2 = 2*freq_1
+        print('freq_1 (THz): ',10**-12*freq_1)
+
+        #filed in space and time
+        f = np.zeros((n_x,n_y,n_z,n_f,n_t),dtype = np.complex)
+        for y in range(n_y):
+            for t in range(n_t):
+                if y == 24 or y == 74:
+                    f[0,y,0,2,t] = np.cos(2*np.pi*freq_1*t*del_t)
+                if y == 34 or y  == 64:
+                    f[0,y,0,2,t] = np.cos(2*np.pi*freq_2*t*del_t)
+
+        f = tf.convert_to_tensor(f)
+
+        #calculate spectrum
+        sp_1 , sp_2 = SPECTRUM_Z(f,del_t,n_t,freq_1,freq_2)
+
+
+        with tf.Session() as sess:
+            sp_1 = sess.run(sp_1)
+            sp_2 = sess.run(sp_2)
+            f = np.real(sess.run(f))
+
+            #plot results
+            plt.figure(1)
+            plt.plot(np.abs(sp_1),label = 'res freq')
+            plt.plot(np.abs(sp_2),label = 'double res freq')
+            plt.xlabel('position')
+            plt.title('spectrum')
+            plt.ylabel('mag')
+            plt.legend()
+            plt.show()
+
+            plt.figure(3)
+            plt.imshow(f[0,:,0,2,:])
+            plt.xlabel('time (ps)')
+            plt.colorbar()
+            plt.title('time signal over space')
+            plt.ylabel('position')
+            plt.show()
+
+        self.assertEqual(success, True)
+
+    def test_trapz(self):
+
+        success = True
+
+        n = 1000
+        a = 0
+        b = np.pi/2
+
+        m = 2000
+        c = 0
+        d = 1
+
+        del_x = (b - a)/n
+        del_y = (d - c)/m
+
+        f = np.zeros((n+1,m+1))
+
+        x = np.linspace(a,b,n+1)
+        y = np.linspace(c,d,m+1)
+
+        for i_x in range(n):
+            for i_y in range(m):
+                f[i_x,i_y] = np.sin(x[i_x])*np.cos(y[i_y])
+
+        f_int = -(np.cos(b)-np.cos(a)) * (np.sin(d) - np.sin(c))
+
+        trapz =TRAPZ_2D(f,del_x,del_y)
+
+        print('f_int: ',f_int)
+
+        with tf.Session() as sess:
+
+            trapz = sess.run(trapz)
+            print('trapz: ',trapz)
+
+        self.assertEqual(success, True)
+
+    def test_overlap(self):
+
+        success = True
+
+        n_x = 50
+        n_f = 100
+
+        x_1 = 0
+        x_2 = 30e-6
+
+        freq_1 = 30e12
+        freq_2 = 80e12
+
+        n = 1000
+        a = 0
+        b = 4
+
+        m = 2000
+        c = 190
+        d = 200
+
+        del_x = (b - a)/n
+        del_y = (d - c)/m
+
+        f_1 = np.zeros((n+1,m+1),dtype = np.complex)
+        f_2 = np.zeros((n+1,m+1),dtype = np.complex)
+
+        x = np.linspace(a,b,n+1)
+        y = np.linspace(c,d,m+1)
+
+        for i_x in range(n):
+            for i_y in range(m):
+                f_1[i_x,i_y] = np.complex(np.sqrt(x[i_x])*np.cos(y[i_y]+x[i_x]),np.sqrt(x[i_x])*np.sin(y[i_y]+x[i_x]))
+                f_2[i_x,i_y] = np.complex(np.sqrt(x[i_x])*np.cos(2*y[i_y]+x[i_x]),np.sqrt(x[i_x])*np.sin(2*y[i_y]+x[i_x]))
+
+        x_1 = a
+        x_2 = b
+        freq_1 = c
+        freq_2 = d
+        n_x = n
+        n_f = m
+
+        del_x = (b-a)/n
+        del_freq = (d-c)/m
+
+        f_1 = tf.convert_to_tensor(f_1)
+        f_2 = tf.convert_to_tensor(f_2)
+
+        ol = OVERLAP_INTEGRAL(f_1,f_2,del_x,del_freq)
+        ol_a = (2/(freq_2-freq_1)**2) * (1-np.cos(freq_2-freq_1))
+
+        with tf.Session() as sess:
+
+            ol = sess.run(ol)
+            f_1 = sess.run(f_1)
+            f_2 = sess.run(f_2)
+
+            print('ol:',ol)
+
+            print('ol analytical: ',ol_a)
+
+            plt.figure(1)
+            plt.imshow(np.abs(f_1))
+            plt.title('field 1 - magnitude')
+            plt.xlabel('frequency (THz)')
+            plt.ylabel('position (ums)')
+            plt.colorbar()
+            plt.show()
+
+            plt.figure(2)
+            plt.imshow(np.abs(f_2))
+            plt.title('field 2 - magnitude')
+            plt.xlabel('frequency (THz)')
+            plt.ylabel('position (ums)')
+            plt.colorbar()
+            plt.show()
+
+            plt.figure(3)
+            plt.imshow(np.angle(f_1))
+            plt.title('field 1 - phase')
+            plt.xlabel('frequency (THz)')
+            plt.ylabel('position (ums)')
+            plt.colorbar()
+            plt.show()
+
+            plt.figure(4)
+            plt.imshow(np.angle(f_2))
+            plt.title('field 2 - phase')
+            plt.xlabel('frequency (THz)')
+            plt.ylabel('position (ums)')
+            plt.colorbar()
+            plt.show()
+
+        self.assertEqual(success, True)
+
+    def test_find_closest(self):
+
+        success = True
+
+        tensor = tf.convert_to_tensor(np.linspace(0.3,8.3,1000),dtype = tf.float32)
+        value = [0.8,1.2]
+        value = tf.convert_to_tensor(value,dtype = tf.float32)
+
+        begin , size = FIND_CLOSEST(tensor,value)
+
+        tensor_slice = tf.slice(tensor,[begin],[size])
+
+        with tf.Session() as sess:
+
+            tensor = sess.run(tensor)
+            tensor_slice = sess.run(tensor_slice)
+            value = sess.run(value)
+
+            begin = sess.run(begin)
+            size = sess.run(size)
+
+            print('begin: ',begin)
+            print('size: ',size)
+
+            print('frist from sliced tensor: ',tensor_slice[0])
+            print('last from sliced tensor: ',tensor_slice[-1])
+            
+            print('first value: ',value[0])
+            print('last value: ',value[1])
 
         self.assertEqual(success, True)
 
