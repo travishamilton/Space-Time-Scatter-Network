@@ -8,7 +8,7 @@ import tensorflow as tf
 
 #from layers_3 import CONSTANT_TENSORS , LORENTZ_TRANSFER_FUNCTION , STATE_OPERATORS , MULTIPLE_LORENTZ , ELECTRIC_DISPERSION_OPERATORS , LORENTZ , CHI_2_NON_LINEAR, SUM_RATIONAL_POLY , MULTIPLE_TRANSMISSION , MULTIPLE_SCATTER , MULTIPLE_LORENTZ_2
 
-from layers import SPECTRUM_Z  , TRAPZ
+from layers import SPECTRUM_Z  , TRAPZ_2D , OVERLAP_INTEGRAL , FIND_CLOSEST
 
 data_type = np.float32
 
@@ -1113,13 +1113,27 @@ class Test(unittest.TestCase):
 
         n = 1000
         a = 0
-        b = 3*np.pi
+        b = np.pi/2
+
+        m = 2000
+        c = 0
+        d = 1
+
+        del_x = (b - a)/n
+        del_y = (d - c)/m
+
+        f = np.zeros((n+1,m+1))
 
         x = np.linspace(a,b,n+1)
-        f = np.sin(x)
-        f_int = -np.cos(b) + np.cos(a)
+        y = np.linspace(c,d,m+1)
 
-        trapz = TRAPZ(f,a,b,n)
+        for i_x in range(n):
+            for i_y in range(m):
+                f[i_x,i_y] = np.sin(x[i_x])*np.cos(y[i_y])
+
+        f_int = -(np.cos(b)-np.cos(a)) * (np.sin(d) - np.sin(c))
+
+        trapz =TRAPZ_2D(f,del_x,del_y)
 
         print('f_int: ',f_int)
 
@@ -1127,6 +1141,133 @@ class Test(unittest.TestCase):
 
             trapz = sess.run(trapz)
             print('trapz: ',trapz)
+
+        self.assertEqual(success, True)
+
+    def test_overlap(self):
+
+        success = True
+
+        n_x = 50
+        n_f = 100
+
+        x_1 = 0
+        x_2 = 30e-6
+
+        freq_1 = 30e12
+        freq_2 = 80e12
+
+        n = 1000
+        a = 0
+        b = 4
+
+        m = 2000
+        c = 190
+        d = 200
+
+        del_x = (b - a)/n
+        del_y = (d - c)/m
+
+        f_1 = np.zeros((n+1,m+1),dtype = np.complex)
+        f_2 = np.zeros((n+1,m+1),dtype = np.complex)
+
+        x = np.linspace(a,b,n+1)
+        y = np.linspace(c,d,m+1)
+
+        for i_x in range(n):
+            for i_y in range(m):
+                f_1[i_x,i_y] = np.complex(np.sqrt(x[i_x])*np.cos(y[i_y]+x[i_x]),np.sqrt(x[i_x])*np.sin(y[i_y]+x[i_x]))
+                f_2[i_x,i_y] = np.complex(np.sqrt(x[i_x])*np.cos(2*y[i_y]+x[i_x]),np.sqrt(x[i_x])*np.sin(2*y[i_y]+x[i_x]))
+
+        x_1 = a
+        x_2 = b
+        freq_1 = c
+        freq_2 = d
+        n_x = n
+        n_f = m
+
+        del_x = (b-a)/n
+        del_freq = (d-c)/m
+
+        f_1 = tf.convert_to_tensor(f_1)
+        f_2 = tf.convert_to_tensor(f_2)
+
+        ol = OVERLAP_INTEGRAL(f_1,f_2,del_x,del_freq)
+        ol_a = (2/(freq_2-freq_1)**2) * (1-np.cos(freq_2-freq_1))
+
+        with tf.Session() as sess:
+
+            ol = sess.run(ol)
+            f_1 = sess.run(f_1)
+            f_2 = sess.run(f_2)
+
+            print('ol:',ol)
+
+            print('ol analytical: ',ol_a)
+
+            plt.figure(1)
+            plt.imshow(np.abs(f_1))
+            plt.title('field 1 - magnitude')
+            plt.xlabel('frequency (THz)')
+            plt.ylabel('position (ums)')
+            plt.colorbar()
+            plt.show()
+
+            plt.figure(2)
+            plt.imshow(np.abs(f_2))
+            plt.title('field 2 - magnitude')
+            plt.xlabel('frequency (THz)')
+            plt.ylabel('position (ums)')
+            plt.colorbar()
+            plt.show()
+
+            plt.figure(3)
+            plt.imshow(np.angle(f_1))
+            plt.title('field 1 - phase')
+            plt.xlabel('frequency (THz)')
+            plt.ylabel('position (ums)')
+            plt.colorbar()
+            plt.show()
+
+            plt.figure(4)
+            plt.imshow(np.angle(f_2))
+            plt.title('field 2 - phase')
+            plt.xlabel('frequency (THz)')
+            plt.ylabel('position (ums)')
+            plt.colorbar()
+            plt.show()
+
+        self.assertEqual(success, True)
+
+    def test_find_closest(self):
+
+        success = True
+
+        tensor = tf.convert_to_tensor(np.linspace(0.3,8.3,1000),dtype = tf.float32)
+        value = [0.8,1.2]
+        value = tf.convert_to_tensor(value,dtype = tf.float32)
+
+        begin , size = FIND_CLOSEST(tensor,value)
+
+        tensor_slice = tf.slice(tensor,[begin],[size])
+
+        with tf.Session() as sess:
+
+            tensor = sess.run(tensor)
+            tensor_slice = sess.run(tensor_slice)
+            value = sess.run(value)
+
+            begin = sess.run(begin)
+            size = sess.run(size)
+
+            print('begin: ',begin)
+            print('size: ',size)
+
+            print('frist from sliced tensor: ',tensor_slice[0])
+            print('last from sliced tensor: ',tensor_slice[-1])
+            
+            print('first value: ',value[0])
+            print('last value: ',value[1])
 
         self.assertEqual(success, True)
 

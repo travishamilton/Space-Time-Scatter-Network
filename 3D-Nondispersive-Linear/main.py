@@ -8,7 +8,7 @@ from plots import*
 from parameters import  NL_MULTIPLE_DISPERSION_PARAMETERS
 from fields import SOURCE , TIME_SOURCE_LUMERICAL , LINE_SOURCE_E
 from weights import WEIGHT_CREATION , WEIGHT_INDEXING , WEIGHT_CREATION_TEST
-from layers import NL_MULTIPLE_PROPAGATE , NL_MULTIPLE_PROPAGATE_TRAIN , SPECTRUM_Z
+from layers import NL_MULTIPLE_PROPAGATE , NL_MULTIPLE_PROPAGATE_TRAIN , SPECTRUM_Z , NONLINEAR_OVERLAP_INTEGRAL , OVERLAP_INTEGRAL
 import pickle
 
 ### ----------------General Notes ------------------------------- ###
@@ -22,13 +22,13 @@ import pickle
 
 data_type = np.float32
 
-os.environ['TF_CPP_MIN_LOG_LEVEL']='2'              # clears Tensorflow CPU for my mac Unix terminal
-os.system('cls' if os.name == 'nt' else 'clear')    # clears the terminal window screen (clc equiv. to MATLAB)
+os.environ['TF_CPP_MIN_LOG_LEVEL']='2'				# clears Tensorflow CPU for my mac Unix terminal
+os.system('cls' if os.name == 'nt' else 'clear')	# clears the terminal window screen (clc equiv. to MATLAB)
 
-tf.reset_default_graph()                            #reset tensorflow
+tf.reset_default_graph()							#reset tensorflow
 
-np.random.seed(7)       # seeding the random number generator to reproduce identical results
-tf.set_random_seed(7)   # seed Tensorflow random numebr generator as well
+np.random.seed(7)		# seeding the random number generator to reproduce identical results
+tf.set_random_seed(7)	# seed Tensorflow random numebr generator as well
 
 ### ---------------Global Constants ---------------------------- ###
 n_f = 6                       #number of field components at node
@@ -51,7 +51,6 @@ def FORWARD(n_x,n_y,n_z,n_t,del_l,source_par,mat_par):
 
     # ----------------- Simulation Parameters ---------------------- #
     inf_x,w_0,damp,del_x,x_nl = NL_MULTIPLE_DISPERSION_PARAMETERS(n_x,n_y,n_z,mat_par[0],mat_par[1],mat_par[2],mat_par[3],mat_par[4],mat_par[5],mat_par[6],mat_par[7],mat_par[8])
-    del_x = del_x[:,:,:,:,0]
     PLOT_DISPERSION_PARAMETERS_1D(inf_x[0,:,0],w_0[0,:,0,:],damp[0,:,0,:],del_x[0,:,0,:],fig_num = [1,2])
 
     # ----------------- Source ------------------------------------- #
@@ -73,7 +72,7 @@ def FORWARD(n_x,n_y,n_z,n_t,del_l,source_par,mat_par):
     print("Done!\n")
 
     #------------------ Spectrum -------------------------------------------#
-    freq_1 = c0/1.875e-6
+    freq_1 = c0/1.5e-6
     sp_1 , sp_2 = SPECTRUM_Z(tf.complex(f_time,f_time*0),del_t,n_t,freq_1,freq_1*2)
 
     #--------------------------- Merge Summaries ---------------------------#
@@ -103,11 +102,18 @@ def FORWARD(n_x,n_y,n_z,n_t,del_l,source_par,mat_par):
         plt.legend()
         plt.show()
 
+        plt.figure(9)
+        plt.plot(np.abs(np.conj(sp_1**2)*sp_2),label = 'real')
+        plt.plot(np.angle(np.conj(sp_1**2)*sp_2),label = 'angle')
+        plt.xlabel('position')
+        plt.ylabel('mag')
+        plt.title('spectrum')
+        plt.legend()
+        plt.show()
+
         PLOT_VIDEO_1D(f_time[:,:,:,source_par[0],:],del_l,fig_num = 9)
 
-        #PLOT_SPECTRUM_Z(fig_num = 9,f_time = f_time ,location = [0,1100,0],del_t = del_t)
-
-def INVERSE(n_x,n_y,n_z,n_t,del_l,source_par,mat_par,train_par,loss_path):
+def INVERSE(n_x,n_y,n_z,n_t,del_l,source_par,mat_par,train_par):
     # performs a inverse linear multiple Lorentz resonace simulation
     # n_x: number of spatial parameters in the x or 0th axis direction - tf.constant (int), shape(1,)
     # n_y: number of spatial parameters in the y or 1st axis direction - tf.constant (int), shape(1,)
@@ -128,8 +134,9 @@ def INVERSE(n_x,n_y,n_z,n_t,del_l,source_par,mat_par,train_par,loss_path):
 
     #------------------------ Create Weights ------------------------#
     with tf.name_scope('create_weights'):
-        weights_tens = WEIGHT_CREATION_TEST(n_x, n_y, n_z)
-        
+        weights_tens , weights_train_tens = WEIGHT_CREATION(mat_par[6],mat_par[7], n_x, n_y, n_z)
+        #weights_tens = WEIGHT_CREATION_TEST(n_x, n_y, n_z)
+
     # ----------------- Source ------------------------------------- #
     v_f,time_source,current_density = SOURCE(n_f,n_t,del_t,del_l,n_x,n_y,n_z,source_par[0],source_par[1],source_par[2],source_par[3],source_par[4],source_par[5],source_par[6],source_par[7],source_par[8],source_par[9],source_par[10])
     PLOT_TIME_SOURCE(v_f,time_source,current_density,del_l,fig_num=[4,5,6],location = source_par[3],del_t = del_t)
@@ -148,11 +155,17 @@ def INVERSE(n_x,n_y,n_z,n_t,del_l,source_par,mat_par,train_par,loss_path):
 
         f_time_cavity = tf.slice(f_time,np.concatenate((mat_par[6],np.array([0,0]))),np.concatenate((mat_par[7],np.array([n_f,n_t])))-np.concatenate((mat_par[6],np.array([1,1])))+1)
 
-        freq_1 = c0/1.5e-6
-        freq_2 = freq_1*2
-        sp_1 , sp_2 = SPECTRUM_Z(tf.complex(f_time_cavity,f_time_cavity*0),del_t,n_t,freq_1,freq_2)
+        if train_par[6] >= 0.5/del_t:
+            ValueError('double frequency range is too high')
 
-        least_squares = tf.norm(tf.abs(sp_1)-tf.abs(sp_2), ord=2,name='least_square')**2
+        sp_1 , sp_2 , del_freq = SPECTRUM_Z(tf.complex(f_time_cavity,f_time_cavity*0),del_t,n_t,train_par[3],train_par[4],train_par[5],train_par[6])
+
+        print('del_freq:',del_freq*10**-12)
+
+        overlap_integral = NONLINEAR_OVERLAP_INTEGRAL(sp_1,sp_2,del_l,del_freq,tf.complex(weights_train_tens[:,0,:],weights_train_tens[:,0,:]*0))
+        #overlap_integral = OVERLAP_INTEGRAL(sp_1,sp_2,del_l,del_freq)
+
+        loss_func = 1 - overlap_integral
 
     print("Done!\n")
 
@@ -160,7 +173,7 @@ def INVERSE(n_x,n_y,n_z,n_t,del_l,source_par,mat_par,train_par,loss_path):
     print("Building Optimizer ... ... ...")
     lr = train_par[0]
     with tf.name_scope('train'):
-        train_op = tf.train.AdamOptimizer(learning_rate=lr).minimize(least_squares, var_list = [weights_tens])
+        train_op = tf.train.AdamOptimizer(learning_rate=lr).minimize(loss_func, var_list = [weights_train_tens])
     print("Done!\n")
 
     #--------------------------- Merge Summaries ---------------------------#
@@ -168,6 +181,10 @@ def INVERSE(n_x,n_y,n_z,n_t,del_l,source_par,mat_par,train_par,loss_path):
 
     #--------------------------- Training --------------------------#
     epochs = train_par[1]
+
+    # if the results folder does not exist for the current model, create it
+    if not os.path.exists(train_par[2]):
+            os.makedirs(train_par[2])
 
     with tf.Session(config=tf.ConfigProto(gpu_options=tf.GPUOptions(allow_growth=True))) as sess:
 
@@ -177,31 +194,45 @@ def INVERSE(n_x,n_y,n_z,n_t,del_l,source_par,mat_par,train_par,loss_path):
         for i in range(1, epochs+1):
 
             # run v_f dynamically into the network per iteration
-            _,loss_value,spectrum_1,spectrum_2,weights = sess.run([train_op, least_squares,sp_1,sp_2,weights_tens],  feed_dict = {v_f_tens : v_f} )
+            _,loss_value,spectrum_1,spectrum_2,weights = sess.run([train_op, loss_func,sp_1,sp_2,weights_tens],  feed_dict = {v_f_tens : v_f} )
 
             print('Epoch: ',i)
             print('Loss: ',loss_value)
 
             results = [loss_value,weights,spectrum_1,spectrum_2]
 
-            with open(loss_path+"/epoch_"+(str(i))+".pkl","wb") as f:
+            with open(train_par[2]+"/epoch_"+(str(i))+".pkl","wb") as f:
                 pickle.dump(results, f, pickle.HIGHEST_PROTOCOL)
-    
-    plt.show()
 
     plt.figure(100)
-    plt.plot(np.arange(0,len(spectrum_1))*del_l*1.0e9,np.abs(spectrum_1),label = 'freq 1')
-    plt.plot(np.arange(0,len(spectrum_1))*del_l*1.0e9,np.abs(spectrum_2),label = 'freq 2')
-    plt.legend()
-    plt.title('spectrum overlap')
-    plt.ylabel('spectrum mag')
-    plt.xlabel('position (nm)')
+    plt.imshow(np.abs(spectrum_1))
+    plt.title('spectrum 1 mag')
+    plt.colorbar
 
     plt.figure(101)
+    plt.imshow(np.angle(spectrum_1))
+    plt.title('spectrum 1 phase')
+    plt.colorbar
+
+    plt.figure(102)
+    plt.imshow(np.abs(spectrum_2))
+    plt.title('spectrum 2 mag')
+    plt.colorbar
+
+    plt.figure(103)
+    plt.imshow(np.angle(spectrum_2))
+    plt.title('spectrum 2 phase')
+    plt.colorbar
+
+    plt.figure(104)
+    plt.plot(1/(1+np.exp(-100*np.squeeze(weights))))
+    plt.title('sigmoid of weights')
+
+    plt.figure(105)
     plt.plot(np.squeeze(weights))
+    plt.title('weights')    
 
     plt.show()
-
 
 def MULTIPLE_COMPARE(n_c,n_x,n_y,n_z,n_t,del_l,del_t,del_x,location,time_source,polarization,f_lumerical_time,mat_par):
     #compares the Lumerical results with the forward model STSN results

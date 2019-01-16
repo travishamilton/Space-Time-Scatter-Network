@@ -19,7 +19,7 @@ def TIME_SOURCE_LUMERICAL(polarization,n_f,del_t,n_t,del_l,e_time_source):
     c0 = 2.99792458e8
 
     #time
-    t = np.linspace(0,(n_t-1)*del_t,n_t)
+    t = np.arange(0,n_t*del_t,del_t,dtype = float)
 
     #current density required to produce a plane wave with the given electric field time source
     current_density = -2*e_time_source/eta_0
@@ -54,7 +54,8 @@ def TIME_SOURCE_E(polarization,n_f,del_t,n_t,wavelength,fwhm,del_l,location,inje
     c0 = 2.99792458e8
 
     #time
-    t = np.linspace(0,(n_t-1)*del_t,n_t,dtype = data_type)
+    t = np.arange(0,n_t*del_t,del_t,dtype = data_type)
+    t = np.linspace(0,(n_t-1)*del_t,n_t)
     #angular frequency
     omega = 2*np.pi*c0/wavelength
     #standard deviation

@@ -276,7 +276,7 @@ def SUM_RATIONAL_POLY(num_coeff,den_coeff):
 
     return n_results.c , d_results.c
 
-def SPECTRUM_Z(f_time,del_t,n_t,freq_1,freq_2):
+def SPECTRUM_Z(f_time,del_t,n_t,freq_1_start,freq_1_end,freq_2_start,freq_2_end):
     # determines the spectrum of the z-polarized field along all space
     # fig_num: the figure number
     # f_time: the field over all time and space - shape(n_t,n_x,n_y,n_z,n_f)
@@ -285,8 +285,8 @@ def SPECTRUM_Z(f_time,del_t,n_t,freq_1,freq_2):
     # freq_1: the first frequency value to calculate (Hz)
     # freq_2: the second frequency value to calculate (Hz)
     #
-    # sp_1: the spectrum over the y - axis for freq_1 - shape(n_y)
-    # sp_2: the spectrum over the y - axis for freq_2 - shape(n_y)
+    # sp_1: the spectrum over the y - axis for freq_1 - shape(n_y,n_f_1)
+    # sp_2: the spectrum over the y - axis for freq_2 - shape(n_y,n_f_2)
 
     # get the z polarized time signal
     time_signal = f_time[:,:,:,2,:]
@@ -296,36 +296,29 @@ def SPECTRUM_Z(f_time,del_t,n_t,freq_1,freq_2):
 
     #calculate spectrum
     sp = tf.fft(time_signal)
-    freq = np.fft.fftfreq(t.shape[-1])
+    freq = np.fft.fftfreq(t.shape[-1])/del_t
     l = len(freq)
-    df = freq[1] - freq[0]
-
+     
     # only keep positive frequency values
-    freq = freq[0:l//2-1]/del_t
+    freq = freq[0:l//2-1]
     sp = sp[:,:,:,0:l//2-1]
 
-    #find frequency values
-    if freq_1 > freq[len(freq)-1] or freq_2 > freq[len(freq)-1]:
-        raise ValueError("Selected frequency values are out of range")
+    # get frequency step size
+    df = freq[1] - freq[0]
 
-    for i in range(len(freq)):
-        if freq[i] >= freq_1:
-            index_1 = i
-            break
-    for i in range(len(freq)):
-        if freq[i] >= freq_2:
-            index_2 = i
-            break
+    # get correct frequency
+    begin_1,size_1 = FIND_CLOSEST(freq ,[freq_1_start,freq_1_end])
+    begin_2,size_2 = FIND_CLOSEST(freq ,[freq_2_start,freq_2_end])
 
     #give spectrum vs. space for frequencty values
-    sp_1 = sp[0,:,0,index_1]
-    sp_2 = sp[0,:,0,index_2]
+    sp_1 = sp[0,:,0,begin_1:begin_1+size_1]
+    sp_2 = sp[0,:,0,begin_2:begin_2+size_1]
 
-    return sp_1 , sp_2
+    return sp_1 , sp_2 , df
 
 def TRAPZ(f,a,b,n):
     #calculates the definite integral using the trapezoidal rule along the first axis
-    # f: function values - tf.constant, tf.float32, shape(n+1,n_f)
+    # f: function values - tf.constant, tf.float32, shape(n+1)
     # a: lower limit of definite integral - shape(1,)
     # b: upper limit of definite integral - shape(1,)
     # n: number of function points - shape(1,)
@@ -336,25 +329,74 @@ def TRAPZ(f,a,b,n):
     del_x = (b-a)/n
 
     #trapezoidal rule
-    output = ( del_x/2 ) * ( f[0,:] + f[n,:] + 2*tf.reduce_sum(f[1:n,:]) , 0 )
+    output = ( del_x/2 ) * ( f[0] + f[n] + 2.0*tf.reduce_sum(f[1:n]) )
 
     return output
 
-def OVERLAP_INTEGRAL(f_1,f_2,a,b,n):
+def TRAPZ_2D(f,del_x,del_y):
+    #calculates the definite integral using the trapezoidal rule along 2 dimensions
+    # f: function values - tf.constant, tf.float32, shape(n+1,n_f+1)
+    # del_x: step size in x - shape(1,)
+    # del_y: step size in y - shape(1,)
+    #
+    # output: approximate value of the definite integral of f over all x and y
+
+    #trapezoidal rule
+    s1 = (del_x*del_y/4)*(f[0,0] + f[0,-1] + f[-1,0] + f[-1,-1])
+
+    s2 = (del_x*del_y/2)*(tf.reduce_sum(f[1:-1,0]) + tf.reduce_sum(f[1:-1,-1]) + tf.reduce_sum(f[0,1:-1]) + tf.reduce_sum(f[-1,1:-1]))
+
+    s3 = del_x*del_y*tf.reduce_sum(f)
+
+    #sum components
+    output = s1+s2+s3
+    
+
+    return output
+
+def OVERLAP_INTEGRAL(f_1,f_2,del_x,del_freq):
     # calculates the overlap integral between to frequency modes for a list of frequency pairs
-    # f_1: field 1 containing the spatial and frequency points of interest - shape(n+1,n_f)
-    # f_2: field 2 containing the spatial and frequency points of interest - shape(n+1,n_f)
+    # f_1: field 1 containing the spatial and frequency points of interest - tf.complex, shape(n+1,n_f+1)
+    # f_2: field 2 containing the spatial and frequency points of interest - tf.complex, shape(n+1,n_f+1)
     # a: lower limit of region of interest - shape(1,)
     # b: upper limit of region of interest - shape(1,)
     # n: number of function points over space - shape(1,)
+    # n_f: number of frequency - shape(1,)
     #
-    # output: normalized overalp integral over space for all frequency pairs - shape(n_f,)
+    # output: normalized overalp integral over space and frequency pairs - shape(n_f,)
+
+    # mode product
+    m_p = tf.multiply( tf.conj(f_1) , f_2 )
 
     # overlap integral 
-    top = tf.abs( TRAPZ( tf.conj(f_1)*f_2 , a , b , n) )**2
+    top = tf.abs( tf.complex( TRAPZ_2D(tf.real(m_p),del_x,del_freq) , TRAPZ_2D(tf.imag(m_p),del_x,del_freq) ) )**2
 
     # normalizing coefficients
-    bottom = TRAPZ( tf.abs(f_1)**2 , a , b , n ) * TRAPZ( tf.abs(f_2)**2 , a , b , n )
+    bottom = TRAPZ_2D(tf.abs(f_1)**2,del_x,del_freq) * TRAPZ_2D(tf.abs(f_2)**2,del_x,del_freq)
+
+    # normalized overlap integral
+    output = top/bottom
+
+    return output
+
+def NONLINEAR_OVERLAP_INTEGRAL(f_1,f_2,del_x,del_freq,weights):
+    # calculates the nonlinear overlap integral between to frequency modes for a list of frequency pairs
+    # f_1: field 1 (pump) containing the spatial and frequency points of interest - tf.complex, shape(n+1,n_f+1)
+    # f_2: field 2 (signal) containing the spatial and frequency points of interest - tf.complex, shape(n+1,n_f+1)
+    # del_x: step size in space - shape(1,)
+    # del_freq: step size in frequency - shape(1,)
+    # weights: weight tensor over the mask - shape(n+1,)
+    #
+    # output: normalized nonllinear overalp integral over space and frequency pairs - shape(n_f,)
+
+    # mode product
+    m_p = tf.multiply( tf.sigmoid(100*weights) * f_1**2 , tf.conj(f_2) )
+
+    # overlap integral 
+    top = tf.abs( tf.complex( TRAPZ_2D(tf.real(m_p),del_x,del_freq) , TRAPZ_2D(tf.imag(m_p),del_x,del_freq) ) )
+
+    # normalizing coefficients
+    bottom = TRAPZ_2D(tf.abs(f_1)**2,del_x,del_freq) * tf.sqrt( TRAPZ_2D(tf.abs(f_2)**2,del_x,del_freq) )
 
     # normalized overlap integral
     output = top/bottom
@@ -439,6 +481,20 @@ def MULTIPLE_CONSTANT_TENSORS(w_0,n_c,n_f):
                       boundary[x,y,z,:] = np.zeros(n_c,dtype = data_type)
    
     return tf.convert_to_tensor(r_1_t) , tf.convert_to_tensor(r) , tf.convert_to_tensor(p) , tf.convert_to_tensor(boundary)
+
+def FIND_CLOSEST(tensor,value):
+    # find the indicies in the tensor associated with the given value range
+    # tensor - 1D tensor
+    # value - a pair of values (highest,lowest) to be indexed
+
+    # get first and last index value
+    begin = tf.argmin(tf.abs(tensor - value[0]))
+    last = tf.argmin(tf.abs(tensor - value[1]))
+
+    # get size
+    size = last - begin + 1
+
+    return begin , size
 
 # ---------------------------------------------------------------------- #
 ###            Transfer Operation

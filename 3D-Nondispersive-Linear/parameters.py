@@ -76,7 +76,7 @@ def NL_MULTIPLE_DISPERSION_PARAMETERS(n_x,n_y,n_z,n_r,inf_x_mat,w_0_mat,damp_mat
         
 
     else:
-        raise ValueError("Starting index must be smaller than or equal to ending index.")
+	    raise ValueError("Starting index must be smaller than or equal to ending index.")
 
     return inf_x,w_0,damp,del_x,x_nl
     
