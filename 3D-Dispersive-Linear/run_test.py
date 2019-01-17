@@ -75,7 +75,7 @@ n_x = 1
 n_y = 200
 n_z = 1
 
-n_t = 1000
+n_t = 300
 
 # ------------------------------- ------------------------------ #
 # ---------------------- Source Parameters --------------------- #
@@ -128,22 +128,14 @@ freq_2_end = 2*freq_1_end
 
 loss_path = "testing_R1/nt_"+str(n_t)+"_nw_"+str(n_wavelength)+"_epochs_"+str(epochs)
 
-w_0 = [-1,0,1]
-
-train_par = [lr,epochs,loss_path,freq_1_start,freq_1_end,freq_2_start,freq_2_end,w_0[1]]
-
-n_train = 3
+train_par = [lr,epochs,loss_path,freq_1_start,freq_1_end,freq_2_start,freq_2_end]
 
 
 # ------------------------------- ------------------------------ #
 # --------------------- Run Multiple Inverse ------------------- #
 # ------------------------------- ------------------------------ #
 
-for i in range(n_train):
-
-	train_par = [lr,epochs,loss_path,freq_1_start,freq_1_end,freq_2_start,freq_2_end,w_0[i]]
-
-	INVERSE(n_x,n_y,n_z,n_t,del_l,source_par,mat_par,train_par)
+INVERSE(n_x,n_y,n_z,n_t,del_l,source_par,mat_par,train_par)
 
 # ------------------------------- ------------------------------ #
 # ---------------------- Relevant Parameters ------------------- #

@@ -3,14 +3,13 @@ import numpy as np
 
 data_type = tf.float32
 
-def WEIGHT_CREATION(mask_start, mask_end, n_x, n_y, n_z, w_0):	
+def WEIGHT_CREATION(mask_start, mask_end, n_x, n_y, n_z):	
     #produces the weights to be trained within the masked region
     #mask_start: smallest coordinates of the masked region - tuple int, shape(3,)
     #mask_end: largest coordinates of the masked region - tuple int, shape(3,)
 	#n_x: number of points in the first direction - int shape(1,)
 	#n_y: number of points in the second direction - int shape(1,)
 	#n_z: number of points in the third direction - int shape(1,)
-	#w_0: start weight value - int shape(1,)
 	#
     #weights_train: tensorflow variable containing weights in masked region - tf.Variable, shape(n_x_masked,n_y_masked,n_z_masked)
 	#weights: tensorflow variable containing weights in all regions -  shape(n_x,n_y,n_z)
@@ -20,7 +19,7 @@ def WEIGHT_CREATION(mask_start, mask_end, n_x, n_y, n_z, w_0):
 	if mask_start[0] <= mask_end[0] and mask_start[1] <= mask_end[1] and mask_start[2] <= mask_end[2]:
 
 		# create weights over the masked region
-		weights_train = tf.Variable(w_0*tf.ones(shape = [mask_end[0] - mask_start[0] + 1 , mask_end[1] - mask_start[1] + 1 , mask_end[2] - mask_start[2] + 1 ] , dtype = data_type))
+		weights_train = tf.Variable(tf.zeros(shape = [mask_end[0] - mask_start[0] + 1 , mask_end[1] - mask_start[1] + 1 , mask_end[2] - mask_start[2] + 1 ] , dtype = data_type))
 
 		# create weights over all space
 		weights = weights_train

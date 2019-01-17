@@ -390,8 +390,8 @@ def NONLINEAR_OVERLAP_INTEGRAL(f_1,f_2,del_x,del_freq,weights):
     # output: normalized nonllinear overalp integral over space and frequency pairs - shape(n_f,)
 
     # mode product
-    m_p = tf.multiply( tf.sigmoid(100*weights) * f_1**2 , tf.conj(f_2) )
-
+    m_p = tf.multiply(tf.multiply( tf.sigmoid(100*tf.reshape(weights,(-1,1))) , f_1**2)  , tf.conj(f_2) )
+    
     # overlap integral 
     top = tf.abs( tf.complex( TRAPZ_2D(tf.real(m_p),del_x,del_freq) , TRAPZ_2D(tf.imag(m_p),del_x,del_freq) ) )
 

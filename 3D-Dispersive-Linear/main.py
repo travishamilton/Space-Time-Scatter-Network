@@ -134,7 +134,7 @@ def INVERSE(n_x,n_y,n_z,n_t,del_l,source_par,mat_par,train_par):
 
     #------------------------ Create Weights ------------------------#
     with tf.name_scope('create_weights'):
-        weights_tens , weights_train_tens = WEIGHT_CREATION(mat_par[6],mat_par[7], n_x, n_y, n_z, train_par[7])
+        weights_tens , weights_train_tens = WEIGHT_CREATION(mat_par[6],mat_par[7], n_x, n_y, n_z)
         #weights_tens = WEIGHT_CREATION_TEST(n_x, n_y, n_z)
 
     # ----------------- Source ------------------------------------- #
@@ -162,7 +162,7 @@ def INVERSE(n_x,n_y,n_z,n_t,del_l,source_par,mat_par,train_par):
 
         print('del_freq:',del_freq*10**-12)
 
-        overlap_integral = NONLINEAR_OVERLAP_INTEGRAL(sp_1,sp_2,del_l,del_freq,tf.complex(weights_train_tens[:,0,:],weights_train_tens[:,0,:]*0))
+        overlap_integral = NONLINEAR_OVERLAP_INTEGRAL(sp_1,sp_2,del_l,del_freq,tf.complex(weights_train_tens[0,:,0],weights_train_tens[0,:,0]*0))
         #overlap_integral = OVERLAP_INTEGRAL(sp_1,sp_2,del_l,del_freq)
 
         loss_func = 1 - overlap_integral
@@ -189,12 +189,6 @@ def INVERSE(n_x,n_y,n_z,n_t,del_l,source_par,mat_par,train_par):
     with tf.Session(config=tf.ConfigProto(gpu_options=tf.GPUOptions(allow_growth=True))) as sess:
 
         sess.run( tf.global_variables_initializer())
-
-        weights_initial =sess.run(weights_tens)
-
-        with open(train_par[2]+"/epoch_0.pkl","wb") as f:
-                pickle.dump(weights_initial, f, pickle.HIGHEST_PROTOCOL)
-
 
         print("--------- Starting Training ---------\n")
         for i in range(1, epochs+1):
@@ -238,7 +232,7 @@ def INVERSE(n_x,n_y,n_z,n_t,del_l,source_par,mat_par,train_par):
     plt.plot(np.squeeze(weights))
     plt.title('weights')    
 
-    #plt.show()
+    plt.show()
 
 def MULTIPLE_COMPARE(n_c,n_x,n_y,n_z,n_t,del_l,del_t,del_x,location,time_source,polarization,f_lumerical_time,mat_par):
     #compares the Lumerical results with the forward model STSN results
