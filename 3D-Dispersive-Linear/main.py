@@ -6,7 +6,7 @@ import matplotlib.animation as animation
 
 from plots import*
 from parameters import  NL_MULTIPLE_DISPERSION_PARAMETERS
-from fields import SOURCE , TIME_SOURCE_LUMERICAL , LINE_SOURCE_E
+from fields import SOURCE , TIME_SOURCE_LUMERICAL , LINE_SOURCE_E , MULTIPLE_SOURCE
 from weights import WEIGHT_CREATION , WEIGHT_INDEXING , WEIGHT_CREATION_TEST
 from layers import NL_MULTIPLE_PROPAGATE , NL_MULTIPLE_PROPAGATE_TRAIN , SPECTRUM_Z , NONLINEAR_OVERLAP_INTEGRAL , OVERLAP_INTEGRAL
 import pickle
@@ -138,8 +138,9 @@ def INVERSE(n_x,n_y,n_z,n_t,del_l,source_par,mat_par,train_par):
         #weights_tens = WEIGHT_CREATION_TEST(n_x, n_y, n_z)
 
     # ----------------- Source ------------------------------------- #
-    v_f,time_source,current_density = SOURCE(n_f,n_t,del_t,del_l,n_x,n_y,n_z,source_par[0],source_par[1],source_par[2],source_par[3],source_par[4],source_par[5],source_par[6],source_par[7],source_par[8],source_par[9],source_par[10])
-    PLOT_TIME_SOURCE(v_f,time_source,current_density,del_l,fig_num=[4,5,6],location = source_par[3],del_t = del_t)
+    v_f,time_source,current_density = MULTIPLE_SOURCE(n_f,n_t,del_t,del_l,n_x,n_y,n_z,source_par[0],source_par[1],source_par[2],source_par[3],source_par[4],source_par[5],source_par[6],source_par[7],source_par[8],source_par[9],source_par[10])
+    location = source_par[3]
+    PLOT_TIME_SOURCE(v_f,time_source,current_density,del_l,fig_num=[4,5,6],location = location[:,0],del_t = del_t)
 
     #--------------------------- Tensor Creation --------------------------#
     with tf.name_scope('instantiate_placeholders'):
@@ -158,14 +159,14 @@ def INVERSE(n_x,n_y,n_z,n_t,del_l,source_par,mat_par,train_par):
         if train_par[6] >= 0.5/del_t:
             ValueError('double frequency range is too high')
 
-        sp_1 , sp_2 , del_freq = SPECTRUM_Z(tf.complex(f_time_cavity,f_time_cavity*0),del_t,n_t,train_par[3],train_par[4],train_par[5],train_par[6])
+        sp_1 , sp_2 , del_freq = SPECTRUM_Z(tf.complex(f_time_cavity[:,:,:,:,int(source_par[2]/del_t):n_t],f_time_cavity[:,:,:,:,int(source_par[2]/del_t):n_t]*0),del_t,n_t,train_par[3],train_par[4],train_par[5],train_par[6])
 
         print('del_freq:',del_freq*10**-12)
 
         overlap_integral = NONLINEAR_OVERLAP_INTEGRAL(sp_1,sp_2,del_l,del_freq,tf.complex(weights_train_tens[0,:,0],weights_train_tens[0,:,0]*0))
         #overlap_integral = OVERLAP_INTEGRAL(sp_1,sp_2,del_l,del_freq)
 
-        loss_func = 1 - overlap_integral
+        loss_func = - overlap_integral
 
     print("Done!\n")
 
@@ -194,12 +195,12 @@ def INVERSE(n_x,n_y,n_z,n_t,del_l,source_par,mat_par,train_par):
         for i in range(1, epochs+1):
 
             # run v_f dynamically into the network per iteration
-            _,loss_value,spectrum_1,spectrum_2,weights = sess.run([train_op, loss_func,sp_1,sp_2,weights_tens],  feed_dict = {v_f_tens : v_f} )
+            _,loss_value,spectrum_1,spectrum_2,weights,field = sess.run([train_op, loss_func,sp_1,sp_2,weights_tens,f_time],  feed_dict = {v_f_tens : v_f} )
 
             print('Epoch: ',i)
             print('Loss: ',loss_value)
 
-            results = [loss_value,weights,spectrum_1,spectrum_2]
+            results = [loss_value,weights,spectrum_1,spectrum_2,field]
 
             with open(train_par[2]+"/epoch_"+(str(i))+".pkl","wb") as f:
                 pickle.dump(results, f, pickle.HIGHEST_PROTOCOL)
@@ -232,7 +233,7 @@ def INVERSE(n_x,n_y,n_z,n_t,del_l,source_par,mat_par,train_par):
     plt.plot(np.squeeze(weights))
     plt.title('weights')    
 
-    plt.show()
+    #plt.show()
 
 def MULTIPLE_COMPARE(n_c,n_x,n_y,n_z,n_t,del_l,del_t,del_x,location,time_source,polarization,f_lumerical_time,mat_par):
     #compares the Lumerical results with the forward model STSN results

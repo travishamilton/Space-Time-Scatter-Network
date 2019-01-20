@@ -477,7 +477,7 @@ def MULTIPLE_CONSTANT_TENSORS(w_0,n_c,n_f):
 
 
                 #build boundary tensor
-                if y == 0 or x == n_y - 1:
+                if y == 0 or y == n_y - 1:
                       boundary[x,y,z,:] = np.zeros(n_c,dtype = data_type)
    
     return tf.convert_to_tensor(r_1_t) , tf.convert_to_tensor(r) , tf.convert_to_tensor(p) , tf.convert_to_tensor(boundary)
@@ -719,6 +719,9 @@ def NL_MULTIPLE_PROPAGATE_TRAIN(v_f,inf_x,w_0,damp,del_x,x_nl,del_t,n_c,n_t,n_f,
         v_r,s_e_pre,x,f = NL_MULTIPLE_SCATTER(v_i,v_f[:,:,:,:,t],r_1_t,r,p,x,tra_ope,s_e_pre,sta_ope,f)    
 
         v_i = TRANSFER(v_r)
+
+        #perform boundary condition
+        v_i = v_i*boundary
 
         f_tmp = tf.reshape(f,(n_x,n_y,n_z,n_f,1))
         f_time = tf.concat( [f_time,f_tmp] , 4 )

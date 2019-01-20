@@ -1271,8 +1271,8 @@ class Test(unittest.TestCase):
 
         for i_x in range(n):
             for i_y in range(m):
-                f_1[i_x,i_y] = np.complex(np.sqrt(x[i_x])*np.cos(y[i_y]+x[i_x]),np.sqrt(x[i_x])*np.sin(y[i_y]+x[i_x]))
-                f_2[i_x,i_y] = np.complex(np.sqrt(x[i_x])*np.cos(2*y[i_y]+x[i_x]),np.sqrt(x[i_x])*np.sin(2*y[i_y]+x[i_x]))
+                f_1[i_x,i_y] = np.complex(x[i_x]*np.cos(y[i_y]*x[i_x]),x[i_x]*np.sin(y[i_y]*x[i_x]))
+                f_2[i_x,i_y] = np.complex(x[i_x]*np.cos(2*y[i_y]*x[i_x]),x[i_x]*np.sin(2*y[i_y]*x[i_x]))
 
         x_1 = a
         x_2 = b
@@ -1284,13 +1284,13 @@ class Test(unittest.TestCase):
         del_x = (b-a)/n
         del_freq = (d-c)/m
 
-        f_2 = f_1
+        f_2 = f_1**2
         f_1 = tf.convert_to_tensor(f_1)
         f_2 = tf.convert_to_tensor(f_2)
 
         weights = np.ones((n+1))
         ol = NONLINEAR_OVERLAP_INTEGRAL(f_1,f_2,del_x,del_freq,tf.complex(weights,weights*0))
-        #ol_a = (2/(freq_2-freq_1)**2) * (1-np.cos(freq_2-freq_1))
+        ol_a = 6*np.sqrt(3)/np.sqrt((x_2**4-x_1**4)*(freq_2-freq_1))
 
         with tf.Session() as sess:
 
@@ -1300,7 +1300,7 @@ class Test(unittest.TestCase):
 
             print('ol:',ol)
 
-            #print('ol analytical: ',ol_a)
+            print('ol analytical: ',ol_a)
 
             plt.figure(1)
             plt.imshow(np.abs(f_1))

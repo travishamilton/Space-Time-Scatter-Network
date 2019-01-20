@@ -182,6 +182,54 @@ def LINE_SOURCE_E(location,injection_axis,time_source,n_x,n_y,n_z):
 
     return space_time_source
 
+def MULTIPLE_LINE_SOURCE_E(locations,injection_axis,time_source,n_x,n_y,n_z):
+    # produces a plane wave line source with electric field components only
+    # location: a point on the line source
+    # injection_axis: the axis direction in which the plane wave travels
+    # time_source: the free voltage sources in time - np.array float, shape(n_t,n_c)
+    # n_x: number of space steps along first axis - int, shape(1,)
+    # n_y: number of space steps along second axis - int, shape(1,)
+    # n_z: number of space steps along third axis - int, shape(1,)
+    #
+    #space_time_source: source for all space and time - np.array float, shape (n_x,n_y,n_z,n_f,n_t)
+   
+    #get time/component information
+    n_t,n_f = np.shape(time_source)
+
+    #initilize sources
+    space_time_source = np.zeros((n_x,n_y,n_z,n_f,n_t),dtype = data_type)
+
+    _,n_s = np.shape(locations)
+    
+
+    for s in range(n_s):
+
+        #get postion of source
+        i_location = locations[0,s]
+        j_location = locations[1,s]
+        k_location = locations[2,s]
+
+        # find x and y axis index values corresponding to the line source location
+        if injection_axis == 0:
+
+            #build space-time source
+            for t in range(n_t):
+
+                space_time_source[i_location,:,k_location,:,t] = time_source[t,:]
+
+
+        elif injection_axis == 1:
+
+            #build space-time source
+            for t in range(n_t):
+
+                space_time_source[:,j_location,k_location,:,t] = time_source[t,:]
+    
+        else:
+            print('WARNING: injection_axis value is not recognized by LINE_SOURCE function')
+
+    return space_time_source
+
 def SOURCE(n_f,n_t,del_t,del_l,n_x,n_y,n_z,polarization,wavelength,fwhm,location,injection_axis,injection_direction,source_type,fwhm_mode,n_m,center_mode,mode_axis):
     #calculates the source 
     #
@@ -194,6 +242,37 @@ def SOURCE(n_f,n_t,del_t,del_l,n_x,n_y,n_z,polarization,wavelength,fwhm,location
     if source_type == 'Line':
 
         space_time_source = LINE_SOURCE_E(location,injection_axis,time_source,n_x,n_y,n_z)
+
+        return space_time_source , time_source , current_density
+
+    # elif source_type == 'Mode':
+
+    #     space_time_source = LINE_SOURCE_E(location,injection_axis,time_source,n_x,n_y,n_z) 
+
+    #     mode_shape = MODE_SHAPE(fwhm_mode,n_m,center_mode)
+
+    #     space_time_source_mode = MODE_SOURCE(space_time_source,mode_shape,mode_axis)
+
+    #     return space_time_source_mode , time_source
+
+    else: 
+
+        print('WARNING: source type not recognized')
+        
+        return 0
+
+def MULTIPLE_SOURCE(n_f,n_t,del_t,del_l,n_x,n_y,n_z,polarization,wavelength,fwhm,location,injection_axis,injection_direction,source_type,fwhm_mode,n_m,center_mode,mode_axis):
+    #calculates the source 
+    #
+    # space_time_source: the voltage and current free sources injected into the simulation over all space and time (V and A) - shape(n_x,n_y,n_z,n_f,n_t)
+    # time_source: the voltage and current free sources injected into the simulation over all time (V and A) - shape(n_t,n_f)
+    # current_density: the free source current density (A/m^2) - shape(n_t)
+
+    time_source , current_density = TIME_SOURCE_E(polarization,n_f,del_t,n_t,wavelength,fwhm,del_l,location,injection_axis,injection_direction)
+    
+    if source_type == 'Line':
+
+        space_time_source = MULTIPLE_LINE_SOURCE_E(location,injection_axis,time_source,n_x,n_y,n_z)
 
         return space_time_source , time_source , current_density
 

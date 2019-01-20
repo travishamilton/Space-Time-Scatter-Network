@@ -81,7 +81,7 @@ n_y = 300
 n_z = 1
 
 #time points
-n_t = 1500
+n_t = 1200
 
 # ------------------------------- ------------------------------ #
 # ---------------------- Source Parameters --------------------- #
@@ -90,11 +90,14 @@ n_t = 1500
 #speed of light
 c0 = 2.99792458e8
 #location of source (pts.)
-location = (0,150,0)
+location = np.zeros((3,12),dtype = np.int32)
+location[0,:] = np.array([0,0,0,0,0,0,0,0,0,0,0,0],dtype = np.int32)
+location[1,:] = np.array([75,85,95,130,140,150,160,170,180,205,215,225],dtype = np.int32)
+location[2,:] = np.array([0,0,0,0,0,0,0,0,0,0,0,0],dtype = np.int32)
 #polarization of source
 polarization = 2
 #center of wavelength
-wavelength = 1.500e-6
+wavelength = 1.550e-6
 #injection axis
 injection_axis = 1
 #injection direction
@@ -148,13 +151,13 @@ mat_par = [n_r,inf_x_mat,w_0_mat,damp_mat,del_x_mat,x_nl,mask_start,mask_end,n_m
 # ------------------------------- ------------------------------ #
 
 #learning rate
-lr = [0.01,0.05,0.1,0.5]
+lr = [0.005]
 #epochs
-epochs = 2000
+epochs = 4000
 #Pumping end frequency
-freq_1_end = c0/1.2e-6
+freq_1_end = c0/1.55e-6
 #Pumping start frequency
-freq_1_start = c0/1.8e-6
+freq_1_start = c0/1.55e-6
 #SHG start frequency
 freq_2_start = 2*freq_1_start
 #SHG end frequency
@@ -167,7 +170,7 @@ w_0 = 0
 
 train_par = [lr,epochs,loss_path,freq_1_start,freq_1_end,freq_2_start,freq_2_end,w_0]
 
-n_train = 4
+n_train = 1
 
 # ------------------------------- ------------------------------ #
 # ---------------------- Relevant Parameters ------------------- #
@@ -194,7 +197,7 @@ for i in range(n_train):
 
 	device_size_y = del_l*(mask_end[1] - mask_start[1] + 1)
 
-	loss_path = "testing_R1/nt_"+str(n_t)+"_dely_"+str(del_l*10e9)+"_lr_"+str(lr[i])
+	loss_path = "single_freq_pairs_many_sources_boundaries_apodized/nt_"+str(n_t)+"_dely_"+str(del_l*10e9)+"_lr_"+str(lr[i])
 
 	train_par = [lr[i],epochs,loss_path,freq_1_start,freq_1_end,freq_2_start,freq_2_end,w_0]
 
