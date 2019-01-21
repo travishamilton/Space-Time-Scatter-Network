@@ -15,7 +15,7 @@ n_x = 1
 n_y = 200
 n_z = 1 
 
-n_t = 1000
+n_t = 10000
 
 # ------------------------------- ------------------------------ #
 # ---------------------- Source Parameters --------------------- #
@@ -81,7 +81,7 @@ n_y = 300
 n_z = 1
 
 #time points
-n_t = 1200
+n_t = 2000
 
 # ------------------------------- ------------------------------ #
 # ---------------------- Source Parameters --------------------- #
@@ -90,10 +90,10 @@ n_t = 1200
 #speed of light
 c0 = 2.99792458e8
 #location of source (pts.)
-location = np.zeros((3,12),dtype = np.int32)
-location[0,:] = np.array([0,0,0,0,0,0,0,0,0,0,0,0],dtype = np.int32)
-location[1,:] = np.array([75,85,95,130,140,150,160,170,180,205,215,225],dtype = np.int32)
-location[2,:] = np.array([0,0,0,0,0,0,0,0,0,0,0,0],dtype = np.int32)
+location = np.zeros((3,1),dtype = np.int32)
+location[0,:] = np.array([0])
+location[1,:] = np.array([25])
+location[2,:] = np.array([0])
 #polarization of source
 polarization = 2
 #center of wavelength
@@ -151,7 +151,7 @@ mat_par = [n_r,inf_x_mat,w_0_mat,damp_mat,del_x_mat,x_nl,mask_start,mask_end,n_m
 # ------------------------------- ------------------------------ #
 
 #learning rate
-lr = [0.005]
+lr = [0.05]
 #epochs
 epochs = 4000
 #Pumping end frequency
@@ -197,7 +197,7 @@ for i in range(n_train):
 
 	device_size_y = del_l*(mask_end[1] - mask_start[1] + 1)
 
-	loss_path = "single_freq_pairs_many_sources_boundaries_apodized/nt_"+str(n_t)+"_dely_"+str(del_l*10e9)+"_lr_"+str(lr[i])
+	loss_path = "single_freq_pairs_input_source_boundaries_apodized_linearoverlap_highw0/nt_"+str(n_t)+"_dely_"+str(del_l*10e9)+"_w0_" + str(w_0) + "_lr_"+str(lr[i])
 
 	train_par = [lr[i],epochs,loss_path,freq_1_start,freq_1_end,freq_2_start,freq_2_end,w_0]
 

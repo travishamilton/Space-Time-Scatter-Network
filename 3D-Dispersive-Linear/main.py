@@ -159,7 +159,7 @@ def INVERSE(n_x,n_y,n_z,n_t,del_l,source_par,mat_par,train_par):
         if train_par[6] >= 0.5/del_t:
             ValueError('double frequency range is too high')
 
-        sp_1 , sp_2 , del_freq = SPECTRUM_Z(tf.complex(f_time_cavity[:,:,:,:,int(source_par[2]/del_t):n_t],f_time_cavity[:,:,:,:,int(source_par[2]/del_t):n_t]*0),del_t,n_t,train_par[3],train_par[4],train_par[5],train_par[6])
+        sp_1 , sp_2 , del_freq = SPECTRUM_Z(tf.complex(f_time_cavity[:,:,:,:,int(10*source_par[2]/del_t):n_t],f_time_cavity[:,:,:,:,int(10*source_par[2]/del_t):n_t]*0),del_t,n_t,train_par[3],train_par[4],train_par[5],train_par[6])
 
         print('del_freq:',del_freq*10**-12)
 
