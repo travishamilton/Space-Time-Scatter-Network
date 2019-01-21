@@ -1,6 +1,47 @@
 import numpy as np
 import pickle
 
+def SAVE_PARAMS(n_x,n_y,n_z,n_t,c0,location,polarization,wavelength,injection_axis,injection_direction,fwhm,source_type,del_l,n_r,inf_x_mat,w_0_mat,damp_mat,del_x_mat,x_nl,mask_start,mask_end,lr,epochs,freq_1_start,freq_1_end,freq_2_start,freq_2_end,w_0,del_t,device_size_y,source_location_y,del_freq,space_size_y,time_size,data_path)
+
+    run_parameters = {
+        "simulation points (x)": n_x,
+        "simulation points (y)": n_y,
+        "simulation points (z)": n_z,
+        "time points": n_t,
+        "speed of light": c0,
+        "source location (pts)": location,
+        "source polarization": polarization,
+        "wavelength center": wavelength,
+        "injection axis": injection_axis,
+        "injection direction": injection_direction,
+        "source FWHM": fwhm,
+        "source type": source_type,
+        "step size (m)": del_l,
+        "# of Lorentz resonances": n_r,
+        "infinite susceptibility": inf_x_mat,
+        "Lorentz resonances": w_0_mat,
+        "Lorentz change in susceptibility": del_x_mat,
+        "Chi 2": x_nl,
+        "device start": mask_start,
+        "device end": mask_end,
+        "learning rate": lr,
+        "epochs": epochs,
+        "pumping start frequency": freq_1_start,
+        "pumping end frequency": freq_1_end,
+        "SHG start frequency": freq_2_start,
+        "SHG end frequency": freq_2_end,
+        "initial weight": w_0,
+        "time step (s)": del_t,
+        "device size (m)": device_size_y,
+        "source location (m)": source_location_y,
+        "frequency step (Hz)": del_freq,
+        "space length (m)": space_size_y,
+        "time length (s)": time_size
+    }
+
+    with open(data_path + "parameters.pkl", 'wb') as f: 
+        pickle.dump(run_parameters, f, pickle.HIGHEST_PROTOCOL)
+
 def FILE_ID(n_t,n_i,n_j,n_k,scatter_type,mask,time_changes):
 
     file_id = "timeSteps_" + str(n_t) + "_spaceSteps_" + str(n_i) + "_" + str(n_j) + "_" + str(n_k) + "_scatterType_" + scatter_type + "_maskStart_" + str(mask[0,0]) + "_" + str(mask[0,1]) + "_" + str(mask[0,2]) + "_maskEnd_" + str(mask[1,0]) + "_" + str(mask[1,1]) + "_" + str(mask[1,2]) + "_timeChanges_" + str(time_changes)
