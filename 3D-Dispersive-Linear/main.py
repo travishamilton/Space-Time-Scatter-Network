@@ -73,7 +73,11 @@ def FORWARD(n_x,n_y,n_z,n_t,del_l,source_par,mat_par):
 
     #------------------ Spectrum -------------------------------------------#
     freq_1 = c0/1.5e-6
-    sp_1 , sp_2 = SPECTRUM_Z(tf.complex(f_time,f_time*0),del_t,n_t,freq_1,freq_1*2)
+
+    f_time_cavity = tf.slice(f_time,np.concatenate((mat_par[6],np.array([0,0]))),np.concatenate((mat_par[7],np.array([n_f,n_t])))-np.concatenate((mat_par[6],np.array([1,1])))+1)
+
+    sp_1 , sp_2 , del_freq = SPECTRUM_Z(tf.complex(f_time_cavity[:,:,:,:,int(10*source_par[2]/del_t):n_t],f_time_cavity[:,:,:,:,int(10*source_par[2]/del_t):n_t]*0),del_t,n_t,train_par[3],train_par[4],train_par[5],train_par[6])
+
 
     #--------------------------- Merge Summaries ---------------------------#
     merged = tf.summary.merge_all()
@@ -123,7 +127,7 @@ def INVERSE(n_x,n_y,n_z,n_t,del_l,source_par,mat_par,train_par):
     # n_r: number of resonances - tf.constant (int), shape(1,)
     # source_par: contains the parameters relevent for making the source - list, shape(11,)
     # mat_par: contains the parameters relevent for the material - list, shape(9,)
-    # train_par: contains the parameters relevent for training - list, shape()
+    # train_par: contains the parameters relevent for training - list, shape(8,)
 
     #determine time step based on the criteria del_l/del_t = 2*c0
     del_t = del_l/(2*c0)
@@ -152,7 +156,7 @@ def INVERSE(n_x,n_y,n_z,n_t,del_l,source_par,mat_par,train_par):
 
     with tf.name_scope('graph'):
 
-        v_i , f_time, f_final = NL_MULTIPLE_PROPAGATE_TRAIN(v_f_tens,inf_x,w_0,damp,del_x,x_nl,del_t,n_c,n_t,n_f,weights_tens)
+        v_i , f_time, f_final = NL_MULTIPLE_PROPAGATE_TRAIN(v_f_tens,inf_x,w_0,damp,del_x,x_nl,del_t,n_c,n_t,n_f,weights_tens,train_par[8])
 
         f_time_cavity = tf.slice(f_time,np.concatenate((mat_par[6],np.array([0,0]))),np.concatenate((mat_par[7],np.array([n_f,n_t])))-np.concatenate((mat_par[6],np.array([1,1])))+1)
 
@@ -163,10 +167,10 @@ def INVERSE(n_x,n_y,n_z,n_t,del_l,source_par,mat_par,train_par):
 
         print('del_freq:',del_freq*10**-12)
 
-        overlap_integral = NONLINEAR_OVERLAP_INTEGRAL(sp_1,sp_2,del_l,del_freq,tf.complex(weights_train_tens[0,:,0],weights_train_tens[0,:,0]*0))
-        #overlap_integral = OVERLAP_INTEGRAL(sp_1,sp_2,del_l,del_freq)
+        #overlap_integral = NONLINEAR_OVERLAP_INTEGRAL(sp_1,sp_2,del_l,del_freq,tf.complex(weights_train_tens[0,:,0],weights_train_tens[0,:,0]*0))
+        overlap_integral = OVERLAP_INTEGRAL(sp_1,sp_2,del_l,del_freq)
 
-        loss_func = - overlap_integral
+        loss_func = 1 - overlap_integral
 
     print("Done!\n")
 
@@ -234,6 +238,106 @@ def INVERSE(n_x,n_y,n_z,n_t,del_l,source_par,mat_par,train_par):
     plt.title('weights')    
 
     #plt.show()
+
+def INVERSE_ANNEALING(n_x,n_y,n_z,n_t,del_l,source_par,mat_par,train_par,weights,weights_train,run_number):
+    # performs a inverse linear multiple Lorentz resonace simulation with simulated annealing of the weights
+    # n_x: number of spatial parameters in the x or 0th axis direction - tf.constant (int), shape(1,)
+    # n_y: number of spatial parameters in the y or 1st axis direction - tf.constant (int), shape(1,)
+    # n_z: number of spatial parameters in the z or 2nd axis direction - tf.constant (int), shape(1,)
+    # n_t: number of time steps the simulation takes - tf.constant (int), shape(1,)
+    # del_l: the lenght of the mesh step in all three directions (m) - tf.constant (int), shape(1,)
+    # n_r: number of resonances - tf.constant (int), shape(1,)
+    # source_par: contains the parameters relevent for making the source - list, shape(11,)
+    # mat_par: contains the parameters relevent for the material - list, shape(9,)
+    # train_par: contains the parameters relevent for training - list, shape(8,)
+
+    #determine time step based on the criteria del_l/del_t = 2*c0
+    del_t = del_l/(2*c0)
+
+    # ----------------- Simulation Parameters ---------------------- #
+    inf_x,w_0,damp,del_x,x_nl = NL_MULTIPLE_DISPERSION_PARAMETERS(n_x,n_y,n_z,mat_par[0],mat_par[1],mat_par[2],mat_par[3],mat_par[4],mat_par[5],mat_par[6],mat_par[7],mat_par[8])
+    PLOT_DISPERSION_PARAMETERS_1D(inf_x[0,:,0],w_0[0,:,0,:],damp[0,:,0,:],del_x[0,:,0,:],fig_num = [1,2])
+
+    # ----------------- Source ------------------------------------- #
+    v_f,time_source,current_density = MULTIPLE_SOURCE(n_f,n_t,del_t,del_l,n_x,n_y,n_z,source_par[0],source_par[1],source_par[2],source_par[3],source_par[4],source_par[5],source_par[6],source_par[7],source_par[8],source_par[9],source_par[10])
+    location = source_par[3]
+    PLOT_TIME_SOURCE(v_f,time_source,current_density,del_l,fig_num=[4,5,6],location = location[:,0],del_t = del_t)
+
+    if run_number == 0:
+        #------------------------ Create Weights ------------------------#
+        with tf.name_scope('create_weights'):
+            weights_tens , weights_train_tens = WEIGHT_CREATION(mat_par[6],mat_par[7], n_x, n_y, n_z)
+            #weights_tens = WEIGHT_CREATION_TEST(n_x, n_y, n_z)
+        
+    else:
+        with tf.name_scope('transfer_weights'):
+           weights_tens = tf.variable(weights,dtype = data_type)
+           weights_train_tens = tf.variable(weights_train,dtype = data_type)
+
+    #--------------------------- Tensor Creation --------------------------#
+    with tf.name_scope('instantiate_placeholders'):
+        v_f_tens = tf.placeholder(dtype = tf.float32, shape = [n_x,n_y,n_z,n_f,n_t],name = 'free_source_fields_placeholder')
+
+    #--------------------------- Graph Construction --------------------------#
+    # compute least squares cost for each sample and then average out their costs
+    print("Building Graph ... ... ...")
+
+    with tf.name_scope('graph'):
+
+        v_i , f_time, f_final = NL_MULTIPLE_PROPAGATE_TRAIN(v_f_tens,inf_x,w_0,damp,del_x,x_nl,del_t,n_c,n_t,n_f,weights_tens,train_par[8])
+
+        f_time_cavity = tf.slice(f_time,np.concatenate((mat_par[6],np.array([0,0]))),np.concatenate((mat_par[7],np.array([n_f,n_t])))-np.concatenate((mat_par[6],np.array([1,1])))+1)
+
+        if train_par[6] >= 0.5/del_t:
+            ValueError('double frequency range is too high')
+
+        sp_1 , sp_2 , del_freq = SPECTRUM_Z(tf.complex(f_time_cavity[:,:,:,:,int(10*source_par[2]/del_t):n_t],f_time_cavity[:,:,:,:,int(10*source_par[2]/del_t):n_t]*0),del_t,n_t,train_par[3],train_par[4],train_par[5],train_par[6])
+
+        print('del_freq:',del_freq*10**-12)
+
+        #overlap_integral = NONLINEAR_OVERLAP_INTEGRAL(sp_1,sp_2,del_l,del_freq,tf.complex(weights_train_tens[0,:,0],weights_train_tens[0,:,0]*0))
+        overlap_integral = OVERLAP_INTEGRAL(sp_1,sp_2,del_l,del_freq)
+
+        loss_func = 1 - overlap_integral
+
+    print("Done!\n")
+
+    # #--------------------------- Define Optimizer --------------------------#
+    print("Building Optimizer ... ... ...")
+    lr = train_par[0]
+    with tf.name_scope('train'):
+        train_op = tf.train.AdamOptimizer(learning_rate=lr).minimize(loss_func, var_list = [weights_train_tens])
+    print("Done!\n")
+
+    #--------------------------- Merge Summaries ---------------------------#
+    merged = tf.summary.merge_all()
+
+    #--------------------------- Training --------------------------#
+    epochs = train_par[1]
+
+    # if the results folder does not exist for the current model, create it
+    if not os.path.exists(train_par[2]):
+            os.makedirs(train_par[2])
+
+    with tf.Session(config=tf.ConfigProto(gpu_options=tf.GPUOptions(allow_growth=True))) as sess:
+
+        sess.run( tf.global_variables_initializer())
+
+        print("--------- Starting Training ---------\n")
+        for i in range(1+epochs*run_number, run_number*(epochs) + epochs+1):
+
+            # run v_f dynamically into the network per iteration
+            _,loss_value,spectrum_1,spectrum_2,weights,field, weights_train = sess.run([train_op, loss_func,sp_1,sp_2,weights_tens,f_time,weights_train_tens],  feed_dict = {v_f_tens : v_f} )
+
+            print('Epoch: ',i)
+            print('Loss: ',loss_value)
+
+            results = [loss_value,weights,spectrum_1,spectrum_2,field]
+
+            with open(train_par[2]+"/epoch_"+(str(i))+".pkl","wb") as f:
+                pickle.dump(results, f, pickle.HIGHEST_PROTOCOL)
+    
+    return weights , weights_train
 
 def MULTIPLE_COMPARE(n_c,n_x,n_y,n_z,n_t,del_l,del_t,del_x,location,time_source,polarization,f_lumerical_time,mat_par):
     #compares the Lumerical results with the forward model STSN results

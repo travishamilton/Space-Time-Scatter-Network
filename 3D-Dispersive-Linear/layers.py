@@ -7,6 +7,8 @@ from weights import WEIGHT_INDEXING
 
 data_type = np.float32
 
+alpha = 1000
+
 # ---------------------------------------------------------------------- #
 ###         Dispersion Parameters
 
@@ -61,7 +63,7 @@ def NL_ELECTRIC_DISPERSION_OPERATORS(res_freq,damp,del_x,del_t,inf_x,x_nl):
 
     return sta_ope , tra_ope
 
-def NL_ELECTRIC_DISPERSION_OPERATORS_TRAIN(res_freq,damp,del_x,del_t,inf_x,x_nl,weights):
+def NL_ELECTRIC_DISPERSION_OPERATORS_TRAIN(res_freq,damp,del_x,del_t,inf_x,x_nl,weights,slope):
     # converts the electrical dispersion and non-linear physical parameters into relevent state and transmission operators
     # res_freq - resonant frequency (r/s) - np.float32, np.array, shape (n_x,n_y,n_z,n_r)
     # damp - damping coefficient (r/s) - np.float32, np.array, shape (n_x,n_y,n_z,n_r)
@@ -70,6 +72,7 @@ def NL_ELECTRIC_DISPERSION_OPERATORS_TRAIN(res_freq,damp,del_x,del_t,inf_x,x_nl,
     # inf_x: high frequency susceptibility tensor - np.constant, shape(n_x,n_y,n_z)
     # x_nl: non-linear susceptibility - np.constant, shape(n_x,n_y,n_z)
     # weights: (n_x,n_y,n_z)
+    # slope: the slope of the sigmoid weight function when weights equal to zero, shape(1,)
     #
     # sta_ope: a list of state operators - shape(4,)
     # tra_ope: a list of transmission operators - shape(3,)
@@ -108,8 +111,8 @@ def NL_ELECTRIC_DISPERSION_OPERATORS_TRAIN(res_freq,damp,del_x,del_t,inf_x,x_nl,
     k = tf.convert_to_tensor(k)
 
     #multiply weights by sigmoid function to round them to either 1 or zero, then multiply them by the c and d coefficients
-    c = tf.einsum('ijkl,ijk->ijkl',c,tf.sigmoid(100*weights))
-    d = d*tf.sigmoid(100*weights)
+    c = tf.einsum('ijkl,ijk->ijkl',c,tf.sigmoid(2*slope*weights))
+    d = d*tf.sigmoid(2*slope*weights)
 
     #package operators
     sta_ope = [a,b,c,d]
@@ -379,7 +382,7 @@ def OVERLAP_INTEGRAL(f_1,f_2,del_x,del_freq):
 
     return output
 
-def NONLINEAR_OVERLAP_INTEGRAL(f_1,f_2,del_x,del_freq,weights):
+def NONLINEAR_OVERLAP_INTEGRAL(f_1,f_2,del_x,del_freq,weights,slope):
     # calculates the nonlinear overlap integral between to frequency modes for a list of frequency pairs
     # f_1: field 1 (pump) containing the spatial and frequency points of interest - tf.complex, shape(n+1,n_f+1)
     # f_2: field 2 (signal) containing the spatial and frequency points of interest - tf.complex, shape(n+1,n_f+1)
@@ -390,7 +393,7 @@ def NONLINEAR_OVERLAP_INTEGRAL(f_1,f_2,del_x,del_freq,weights):
     # output: normalized nonllinear overalp integral over space and frequency pairs - shape(n_f,)
 
     # mode product
-    m_p = tf.multiply(tf.multiply( tf.sigmoid(100*tf.reshape(weights,(-1,1))) , f_1**2)  , tf.conj(f_2) )
+    m_p = tf.multiply(tf.multiply( tf.sigmoid(2*slope*tf.reshape(weights,(-1,1))) , f_1**2)  , tf.conj(f_2) )
     
     # overlap integral 
     top = tf.abs( tf.complex( TRAPZ_2D(tf.real(m_p),del_x,del_freq) , TRAPZ_2D(tf.imag(m_p),del_x,del_freq) ) )
@@ -678,7 +681,7 @@ def NL_MULTIPLE_PROPAGATE(v_f,inf_x,w_0,damp,del_x,x_nl,del_t,n_c,n_t,n_f):
 
     return v_i , f_time , f_final
 
-def NL_MULTIPLE_PROPAGATE_TRAIN(v_f,inf_x,w_0,damp,del_x,x_nl,del_t,n_c,n_t,n_f,weights):
+def NL_MULTIPLE_PROPAGATE_TRAIN(v_f,inf_x,w_0,damp,del_x,x_nl,del_t,n_c,n_t,n_f,weights,slope):
     # propagte the voltages for a non-linear multiple resonant lorentz model (both scattering and transfer) with trained weights
     # v_f: free-source fields , tf.constant - shape(n_x,n_y,n_z,n_f,n_t)
     # inf_x: high frequency susceptibility tensor - np.constant, shape(n_x,n_y,n_z)
@@ -691,6 +694,7 @@ def NL_MULTIPLE_PROPAGATE_TRAIN(v_f,inf_x,w_0,damp,del_x,x_nl,del_t,n_c,n_t,n_f,
     # n_t: number of time steps - int, shape(1,)
     # n_f: number of field components at each point in space - int, shape(1,)
     # weights: material index for each position - shape(n_x,n_y,n_z)
+    # slope: the slope of the weight sigmoid function at 0 - shape(1,)
     #
     # v_i: voltage incident - tf.constant, shape(n_x,n_y,n_z,n_c)
     # f_time: total fields for all time - tf.constant, shape(n_x,n_y,n_z,n_f,n_t)
@@ -700,7 +704,7 @@ def NL_MULTIPLE_PROPAGATE_TRAIN(v_f,inf_x,w_0,damp,del_x,x_nl,del_t,n_c,n_t,n_f,
     n_x,n_y,n_z,n_r = np.shape(w_0)
     
     #determine the electrical dispersion state variable operators
-    sta_ope , tra_ope = NL_ELECTRIC_DISPERSION_OPERATORS_TRAIN(w_0,damp,del_x,del_t,inf_x,x_nl,weights)
+    sta_ope , tra_ope = NL_ELECTRIC_DISPERSION_OPERATORS_TRAIN(w_0,damp,del_x,del_t,inf_x,x_nl,weights,slope)
 
     #produce constant tensors for scattering
     r_1_t,r,p,boundary = MULTIPLE_CONSTANT_TENSORS(w_0,n_c,n_f)
