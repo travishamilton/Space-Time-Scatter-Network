@@ -35,7 +35,7 @@ n_f = 6                       #number of field components at node
 n_c = 12                      #number of voltage components at node
 c0 = 2.99792458e8             #speed of light in vaccum (m/s)
 
-def FORWARD(n_x,n_y,n_z,n_t,del_l,source_par,mat_par):
+def FORWARD(n_x,n_y,n_z,n_t,del_l,source_par,mat_1_par,mat_2_par,n_m):
     #performs a forward non-linear multiple Lorentz resonace simulation
     # n_x: number of spatial parameters in the x or 0th axis direction - tf.constant (int), shape(1,)
     # n_y: number of spatial parameters in the y or 1st axis direction - tf.constant (int), shape(1,)
@@ -50,12 +50,12 @@ def FORWARD(n_x,n_y,n_z,n_t,del_l,source_par,mat_par):
     del_t = del_l/(2*c0)
 
     # ----------------- Simulation Parameters ---------------------- #
-    inf_x,w_0,damp,del_x,x_nl = NL_MULTIPLE_DISPERSION_PARAMETERS(n_x,n_y,n_z,mat_par[0],mat_par[1],mat_par[2],mat_par[3],mat_par[4],mat_par[5],mat_par[6],mat_par[7],mat_par[8])
+    inf_x,w_0,damp,del_x,x_nl = NL_MULTIPLE_DISPERSION_PARAMETERS(n_x,n_y,n_z, mat_1_par, mat_2_par,n_m)
     PLOT_DISPERSION_PARAMETERS_1D(inf_x[0,:,0],w_0[0,:,0,:],damp[0,:,0,:],del_x[0,:,0,:],fig_num = [1,2])
 
     # ----------------- Source ------------------------------------- #
     v_f,time_source,current_density = SOURCE(n_f,n_t,del_t,del_l,n_x,n_y,n_z,source_par[0],source_par[1],source_par[2],source_par[3],source_par[4],source_par[5],source_par[6],source_par[7],source_par[8],source_par[9],source_par[10])
-    PLOT_TIME_SOURCE(v_f,time_source,current_density,del_l,fig_num=[4,5,6],location = source_par[3],del_t = del_t)
+    #PLOT_TIME_SOURCE(v_f,time_source,current_density,del_l,fig_num=[4,5,6],location = source_par[3],del_t = del_t)
 
     #--------------------------- Tensor Creation --------------------------#
     with tf.name_scope('instantiate_placeholders'):
@@ -72,8 +72,8 @@ def FORWARD(n_x,n_y,n_z,n_t,del_l,source_par,mat_par):
     print("Done!\n")
 
     #------------------ Spectrum -------------------------------------------#
-    freq_1 = c0/1.5e-6
-    sp_1 , sp_2 = SPECTRUM_Z(tf.complex(f_time,f_time*0),del_t,n_t,freq_1,freq_1*2)
+    #freq_1 = c0/1.5e-6
+    #sp_1 , sp_2 = SPECTRUM_Z(tf.complex(f_time,f_time*0),del_t,n_t,freq_1,freq_1*2)
 
     #--------------------------- Merge Summaries ---------------------------#
     merged = tf.summary.merge_all()
@@ -87,31 +87,38 @@ def FORWARD(n_x,n_y,n_z,n_t,del_l,source_par,mat_par):
         # run the graph to determine the output field
         f_time = sess.run(f_time)
         f_final = sess.run(f_final)
-        sp_2 = sess.run(sp_2)
-        sp_1 = sess.run(sp_1)
+#        sp_2 = sess.run(sp_2)
+#        sp_1 = sess.run(sp_1)
+
+#        print("f_time: \n" +str(f_time))
 
         # plot results
-        PLOT_RESULTS_2(f_final[:,:,:,2],del_l,fig_num = 7)
-
         plt.figure(8)
-        plt.plot(np.abs(sp_1),label = 'res freq')
-        plt.plot(np.abs(sp_2),label = 'double res freq')
-        plt.xlabel('position')
-        plt.ylabel('mag')
-        plt.title('spectrum')
-        plt.legend()
-        plt.show()
+        plt.imshow(f_time[0,:,0,2,:])
+        plt.colorbar()
 
-        plt.figure(9)
-        plt.plot(np.abs(np.conj(sp_1**2)*sp_2),label = 'real')
-        plt.plot(np.angle(np.conj(sp_1**2)*sp_2),label = 'angle')
-        plt.xlabel('position')
-        plt.ylabel('mag')
-        plt.title('spectrum')
-        plt.legend()
         plt.show()
+        # PLOT_RESULTS_2(f_final[:,:,:,2],del_l,fig_num = 7)
 
-        PLOT_VIDEO_1D(f_time[:,:,:,source_par[0],:],del_l,fig_num = 9)
+        # plt.figure(8)
+        # plt.plot(np.abs(sp_1),label = 'res freq')
+        # plt.plot(np.abs(sp_2),label = 'double res freq')
+        # plt.xlabel('position')
+        # plt.ylabel('mag')
+        # plt.title('spectrum')
+        # plt.legend()
+        # plt.show()
+
+        # plt.figure(9)
+        # plt.plot(np.abs(np.conj(sp_1**2)*sp_2),label = 'real')
+        # plt.plot(np.angle(np.conj(sp_1**2)*sp_2),label = 'angle')
+        # plt.xlabel('position')
+        # plt.ylabel('mag')
+        # plt.title('spectrum')
+        # plt.legend()
+        # plt.show()
+        
+        #PLOT_VIDEO_1D(f_time[:,:,:,source_par[0],:],del_l,fig_num = 9)
 
 def INVERSE(n_x,n_y,n_z,n_t,del_l,source_par,mat_par,train_par):
     # performs a inverse linear multiple Lorentz resonace simulation
