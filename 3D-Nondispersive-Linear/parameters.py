@@ -36,7 +36,7 @@ def MAKE_CYLINDER(radius,center,n_background,n_cylinder):
                     n[i,j,k,0] = n_cylinder
     return n
 
-def NL_MULTIPLE_DISPERSION_PARAMETERS(n_x,n_y,n_z,n_r,inf_x_mat,w_0_mat,damp_mat,del_x_mat,x_nl_mat,mask_start,mask_end,n_m):
+def NL_MULTIPLE_DISPERSION_PARAMETERS(n_x,n_y,n_z,mat_1_par,mat_2_par,n_m):
     # produces the parameters for dispersive and non-linear medium
     # n_x: number of spatial steps in the 0th dimension - int, shape (1,)
     # n_y: number of spatial steps in the 1st dimension - int, shape (1,)
@@ -51,6 +51,23 @@ def NL_MULTIPLE_DISPERSION_PARAMETERS(n_x,n_y,n_z,n_r,inf_x_mat,w_0_mat,damp_mat
     # damp: Lorentz damping frequency tensor (rad/s) - np.constant, shape(n_x,n_y,n_z,n_r)
     # del_x: change in susceptibility tensor (unitless) - np.constant, shape(n_x,n_y,n_z,n_r,n_m)
 
+    #extract values
+    n_r = mat_1_par[0]
+    inf_x_mat_1 = mat_1_par[1]
+    w_0_mat_1 = mat_1_par[2]
+    damp_mat_1 = mat_1_par[3]
+    del_x_mat_1 = mat_1_par[4]
+    x_nl_mat_1 = mat_1_par[5]
+    mask_start = mat_1_par[6]
+    mask_end = mat_1_par[7]
+
+    inf_x_mat_2 = mat_2_par[0]
+    w_0_mat_2 = mat_2_par[1]
+    damp_mat_2 = mat_2_par[2]
+    del_x_mat_2 = mat_2_par[3]
+    x_nl_mat_2 = mat_2_par[4]
+    mat_boundary = mat_2_par[5]
+
     #set values to free space
     inf_x = np.zeros((n_x,n_y,n_z),dtype = dtype)
     w_0 = np.zeros((n_x,n_y,n_z,n_r),dtype = dtype)
@@ -60,23 +77,44 @@ def NL_MULTIPLE_DISPERSION_PARAMETERS(n_x,n_y,n_z,n_r,inf_x_mat,w_0_mat,damp_mat
 
     #check to make sure mask makes sense
     if mask_start[0] <= mask_end[0] and mask_start[1] <= mask_end[1] and mask_start[2] <= mask_end[2]:
+        if n_m == 1:
+            #assign same values across all spaces of same material (assuming 2 materials, 1 boundary)
+            for i in range(n_x):
+                if i >= mask_start[0] and i <= mask_end[0]:
+                    for j in range(n_y):
+                        if j >= mask_start[1] and j <= mask_end[1]:
+                            for k in range(n_z):
+                                if k >= mask_start[2] and k <= mask_end[2]:
+                                        inf_x[i,j,k] = inf_x_mat_1
+                                        w_0[i,j,k,:] = w_0_mat_1
+                                        damp[i,j,k,:] = damp_mat_1
+                                        x_nl[i,j,k] = x_nl_mat_1
+                                        del_x[i,j,k,:] = del_x_mat_1
 
-        #assign same values across all space
-        for i in range(n_x):
-            if i >= mask_start[0] and i <= mask_end[0]:
-                for j in range(n_y):
-                    if j >= mask_start[1] and j <= mask_end[1]:
-                        for k in range(n_z):
-                            if k >= mask_start[2] and k <= mask_end[2]:
-                                inf_x[i,j,k] = inf_x_mat
-                                w_0[i,j,k,:] = w_0_mat
-                                damp[i,j,k,:] = damp_mat
-                                x_nl[i,j,k] = x_nl_mat
-                                del_x[i,j,k,:] = del_x_mat
-        
+        if n_m == 2:
+            #assign same values across all spaces of same material (assuming 2 materials, 1 boundary)
+            for i in range(n_x):
+                if i >= mask_start[0] and i <= mask_end[0]:
+                    for j in range(n_y):
+                        if j >= mask_start[1] and j <= mask_end[1]:
+                            for k in range(n_z):
+                                if k >= mask_start[2] and k <= mask_end[2]:
+                                    if j < mat_boundary[1]:
+                                        inf_x[i,j,k] = inf_x_mat_1
+                                        w_0[i,j,k,:] = w_0_mat_1
+                                        damp[i,j,k,:] = damp_mat_1
+                                        x_nl[i,j,k] = x_nl_mat_1
+                                        del_x[i,j,k,:] = del_x_mat_1
+                                    elif j >= mat_boundary[1]:
+                                        inf_x[i,j,k] = inf_x_mat_2
+                                        w_0[i,j,k,:] = w_0_mat_2
+                                        damp[i,j,k,:] = damp_mat_2
+                                        x_nl[i,j,k] = x_nl_mat_2
+                                        del_x[i,j,k,:] = del_x_mat_2
 
     else:
 	    raise ValueError("Starting index must be smaller than or equal to ending index.")
 
     return inf_x,w_0,damp,del_x,x_nl
+    
     
