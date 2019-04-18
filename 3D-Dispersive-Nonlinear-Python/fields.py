@@ -100,44 +100,47 @@ def TIME_SOURCE_E(polarization,n_f,del_t,n_t,wavelength,fwhm,del_l,location,inje
 
 #     return space_time_source
 
-# def MODE_SHAPE(fwhm,n_m,center):
-#     # creates the transverse shape of the mode
-#     # fwhm: the full width at half maximum of the mode
-#     # n_m: number of points used to define the mode
-#     # center: center of the mode
-#     #
-#     # mode_shape: shape of mode along mode axis - np.array float, shape (n_m,)
-
-#     #mode axis
-#     x = np.arange(0,n_m,1)
-#     #standard deviation
-#     sigma = fwhm / 2.35482
-#     #create guassian mode shape
-#     mode_shape = np.exp(-(x-center)**2/(2*sigma**2))
-
-#     return mode_shape
-
-# def MODE_SOURCE(space_time_source,mode_shape,mode_axis):
-#     #produces a mode source
-#     # space_time_source: source for all space and time - np.array float, shape (n_x,n_y,n_z,n_c,n_t)
-#     # mode_shape: shape of mode along mode axis - np.array float, shape (n_m,)
-#     # mode_axis: axis on which the mode exists - int, shape(1,)
-#     #
-#     # space_time_source_mode: mode source for all space and time - np.array float, shape (n_x,n_y,n_z,n_c,n_t)
+def MODE_SHAPE(fwhm,n_x,n_y,del_l,l_0,mode_axis):
+    # creates the transverse shape of the mode
+    # fwhm: the full width at half maximum of the mode
+    # n_m: number of points used to define the mode
+    # center: center of the mode
+    #
+    # mode_shape: shape of mode along mode axis - np.array float, shape (n_m,)
 
 
-#     if mode_axis == 0:
+    #mode axis
+    if mode_axis == 0:
+        l = np.arange(0,n_x,1)*del_l
+    elif mode_axis == 1:
+        l = np.arange(0,n_y,1)*del_l
+    #standard deviation
+    sigma = fwhm / 2.35482
+    #create guassian mode shape
+    mode_shape = np.exp(-(l-l_0)**2/(2*sigma**2))
 
-#             space_time_source_mode = np.einsum('i,ijk->ijk',mode_shape,space_time_source)
+    return mode_shape
 
-#     elif mode_axis == 1:
+def MODE_SOURCE(space_time_source,mode_shape,mode_axis):
+    #produces a mode source
+    # space_time_source: source for all space and time - np.array float, shape (n_x,n_y,n_z,n_c,n_t)
+    # mode_shape: shape of mode along mode axis - np.array float, shape (n_m,)
+    # mode_axis: axis on which the mode exists - int, shape(1,)
+    #
+    # space_time_source_mode: mode source for all space and time - np.array float, shape (n_x,n_y,n_z,n_c,n_t)
 
-#         space_time_source_mode = np.einsum('j,ijk->ijk',mode_shape,space_time_source)
+    if mode_axis == 0:
 
-#     else:
-#         print('WARNING: injection_axis value is not recognized by LINE_SOURCE function')
+        space_time_source_mode = np.einsum('i,ijkmn->ijkmn',mode_shape,space_time_source)
 
-#     return space_time_source_mode
+    elif mode_axis == 1:
+
+        space_time_source_mode = np.einsum('j,ijkmn->ijkmn',mode_shape,space_time_source)
+
+    else:
+        print('WARNING: injection_axis value is not recognized by LINE_SOURCE function')
+
+    return space_time_source_mode
 
 def LINE_SOURCE_E(location,injection_axis,time_source,n_x,n_y,n_z):
     # produces a plane wave line source with electric field components only
@@ -245,15 +248,15 @@ def SOURCE(n_f,n_t,del_t,del_l,n_x,n_y,n_z,polarization,wavelength,fwhm,location
 
         return space_time_source , time_source , current_density
 
-    # elif source_type == 'Mode':
+    elif source_type == 'Mode':
 
-    #     space_time_source = LINE_SOURCE_E(location,injection_axis,time_source,n_x,n_y,n_z) 
+        space_time_source = LINE_SOURCE_E(location,injection_axis,time_source,n_x,n_y,n_z) 
 
-    #     mode_shape = MODE_SHAPE(fwhm_mode,n_m,center_mode)
+        mode_shape = MODE_SHAPE(fwhm_mode,n_x,n_y,del_l,center_mode,mode_axis)
 
-    #     space_time_source_mode = MODE_SOURCE(space_time_source,mode_shape,mode_axis)
+        space_time_source_mode = MODE_SOURCE(space_time_source,mode_shape,mode_axis)
 
-    #     return space_time_source_mode , time_source
+        return space_time_source_mode , time_source , current_density
 
     else: 
 

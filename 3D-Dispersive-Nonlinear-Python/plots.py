@@ -41,9 +41,11 @@ def PLOT_TIME_SOURCE_LUMERICAL(v_f,fig_num,location):
 
 def PLOT_RESULTS_2(f_final,del_l,fig_num):
 
+    x = np.arange(0,len(f_final)*del_l,del_l)
     plt.figure(fig_num)
-    plt.plot(np.squeeze(-f_final/del_l), 'b')
+    plt.plot(x*1.0e9,np.squeeze(-f_final/del_l), 'b')
     plt.ylabel('V/m')
+    plt.xlabel('nm')
     plt.title('final field value - z polarized')
 
 def PLOT_VIDEO_1D(f_time,del_l,fig_num):
@@ -91,28 +93,6 @@ def PLOT_COMPARISON_VIDEO_1D(f_time,f_lumerical_time,del_l,fig_num):
                                     repeat_delay=1000)
 
     ani.save("foward_movie.mp4")
-    plt.show()
-
-def PLOT_VIDEO_2D(f_time,del_l,fig_num):
-
-    fig = plt.figure(fig_num)
-
-    ims = []
-
-    #get number of time steps
-    n_x,n_y,n_z,n_t = np.shape(f_time)
-
-    for t in range(n_t):
-
-        im, = plt.imshow(np.squeeze(-f_time[:,:,:,t]/del_l),animated=True)
-        plt.colorbar
-
-        ims.append([im])
-
-    ani = animation.ArtistAnimation(fig, ims, interval=50, blit=True,
-                                    repeat_delay=1000)
-
-    #ani.save("foward_movie.mp4")
     plt.show()
 
 def PLOT_BOUNDARY_1D(boundary,fig_num):
@@ -189,6 +169,7 @@ def PLOT_TIME_DEP_DISPERSION_PARAMETERS_1D(inf_x,w_0,damp,del_x,fig_num,del_l,de
     plt.title('infinite susceptibility')
     plt.xlabel('fs')
     plt.ylabel('nm')
+    plt.colorbar()
 
     #over all resonances
     for r in range(n_r):
@@ -198,6 +179,7 @@ def PLOT_TIME_DEP_DISPERSION_PARAMETERS_1D(inf_x,w_0,damp,del_x,fig_num,del_l,de
         plt.xlabel('fs')
         plt.ylabel('nm')
         plt.title('change in susceptibility: ' + str(r))
+        plt.colorbar()
 
     #resonant frequency...
 
@@ -207,12 +189,14 @@ def PLOT_TIME_DEP_DISPERSION_PARAMETERS_1D(inf_x,w_0,damp,del_x,fig_num,del_l,de
         plt.contourf(T*1.0e15,L*1.0e9,w_0[:,r,:]*10**-12)
         plt.xlabel('fs')
         plt.ylabel('nm')
-        plt.title('resonance frequency: ' + str(r))
+        plt.title('resonance frequency: ' + str(r) + ' THz')
+        plt.colorbar()
         plt.figure(fig_num+n_r+2*r+2)
         plt.contourf(T*1.0e15,L*1.0e9,damp[:,r,:]*10**-12)
-        plt.title('damping frequency: ' + str(r))
+        plt.title('damping frequency: ' + str(r) + ' THz')
         plt.xlabel('fs')
         plt.ylabel('nm')
+        plt.colorbar()
 
     last_fig = fig_num+n_r+2*r+2 + 1
 
@@ -254,6 +238,7 @@ def PLOT_DISPERSION_PARAMETERS_2D(inf_x,w_0,damp,del_x,fig_num):
         plt.ylabel('THz')
         plt.xlabel('Simulation point')
         plt.title("frequency")
+        plt.colorbar()
     
     plt.legend()
 
@@ -308,9 +293,60 @@ def PLOT_SPECTRUM_Z(fig_num,f_time,location,del_t):
     plt.xlabel('THz')
     plt.ylabel('Spectrum')
     plt.show()
-    
 
-    
+def PLOT_LINEAR_NONDISPERSIVE_PARAMETERS_2D_Z(inf_x,del_l,fig_num):
+    #plots the 2D linear nondispersive parameters of a simulation normal to the z-axis
+    #
+    #inf_x: infinte susceptibility of the material , np.constant - shape(n_x,n_y,n_z)
+
+    #get size parameters
+    n_x,n_y,_ = np.shape(inf_x)
+
+    #produce x and y values
+    x = np.arange(0,n_x,1)*del_l
+    y = np.arange(0,n_y,1)*del_l
+
+    #get mesh grid values
+    Y,X = np.meshgrid(y,x)
+
+    #plot
+    plt.figure(fig_num)
+    plt.contourf(Y*1.0e9,X*1.0e9,inf_x[:,:,0])
+    plt.xlabel('y - nm')
+    plt.ylabel('x - nm')
+    plt.title('electric susceptibility')
+    plt.colorbar()
+
+def PLOT_VIDEO_2D_Z(f_time,del_l,del_t,fig_num):
+    #plots the z component of the electric field for a 2D simulation normal to the z-axis
+
+    #get size parameters
+    n_x,n_y,_,_,n_t = np.shape(f_time)
+
+    #produce x and y values
+    x = np.arange(0,n_y,1)*del_l
+    y = np.arange(0,n_x,1)*del_l
+
+    #get mesh grid values
+    X,Y = np.meshgrid(x,y)
+
+    fig,ax = plt.subplots()
+
+    def animate(i):
+        ax.clear()
+        ax.contourf(X*1.0e9,Y*1.0e9,-f_time[:,:,0,2,i]/del_l)
+        # fig.xlabel('nm')
+        # fig.ylabel('nm')
+        # ax.set_title('%03f'%(i*del_t*1.0e15))
+        ax.set_title('%03f'%(100*i/n_t)) 
+
+    interval = 0.1#in seconds     
+    ani = animation.FuncAnimation(fig,animate,n_t,interval=interval*1e+3,blit=False)
+
+    plt.show()
+
+
+
 
 
 

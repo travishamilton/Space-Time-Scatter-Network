@@ -80,6 +80,38 @@ def NL_MULTIPLE_DISPERSION_PARAMETERS(n_x,n_y,n_z,n_r,inf_x_mat,w_0_mat,damp_mat
 
     return inf_x,w_0,damp,del_x,x_nl
 
+def LINEAR_NONDISPERSIVE_PARAMETERS(n_x,n_y,n_z,inf_x_mat,mat_start,mat_end):
+    # produces the parameters for nondispersive and linear medium
+    #
+    # n_x: number of spatial steps in the 0th dimension - int, shape (1,)
+    # n_y: number of spatial steps in the 1st dimension - int, shape (1,)
+    # n_z: number of spatial steps in the 2nd dimension - int, shape (1,)
+    # inf_x_mat: the infinite susceptibility of the material - int, shape(1,)
+    # mask_start: smallest coordinates of the material region - tuple int, shape(3,)
+    # mask_end: largest coordinates of the material region (asssumes material is a rectangular prisim)- tuple int, shape(3,)
+    #
+    # inf_x: high frequency susceptibility tensor - np.constant, shape(n_x,n_y,n_z)
+
+    #set values to free space
+    inf_x = np.zeros((n_x,n_y,n_z),dtype = dtype)
+
+    #check to make sure mask makes sense
+    if mat_start[0] <= mat_end[0] and mat_start[1] <= mat_end[1] and mat_start[2] <= mat_end[2]:
+
+        #assign same values across all space
+        for i in range(n_x):
+            if i >= mat_start[0] and i <= mat_end[0]:
+                for j in range(n_y):
+                    if j >= mat_start[1] and j <= mat_end[1]:
+                        for k in range(n_z):
+                            if k >= mat_start[2] and k <= mat_end[2]:
+                                inf_x[i,j,k] = inf_x_mat
+
+    else:
+	    raise ValueError("Starting index must be smaller than or equal to ending index.")
+
+    return inf_x
+
 def TIME_DEP_PARAMETERS(n_x,n_y,n_z,n_t,inf_x_mat,w_0_mat,damp_mat,del_x_mat,x_nl_mat,mat_start,mat_end,n_m,t_change):
     # produces the parameters for dispersive and non-linear materials with one Lorentz resonance
     # n_x: number of spatial steps in the 0th dimension - int, shape (1,)

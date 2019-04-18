@@ -64,6 +64,23 @@ def NL_ELECTRIC_DISPERSION_OPERATORS(res_freq,damp,del_x,del_t,inf_x,x_nl):
 
     return sta_ope , tra_ope
 
+def LINEAR_NONDISPERSIVE_OPERATORS(inf_x):
+    # converts the material parameters into transmission operators
+    #
+    # inf_x: high frequency susceptibility tensor - np.constant, shape(n_x,n_y,n_z)
+    #
+    # t: transmission operator - np.constant, shape(n_x,n_y,n_z,n_f)
+
+    #get size parameters
+    n_x,n_y,n_z = np.shape(inf_x)
+
+    #produce transmission operators
+    t_e = 1/(2 + 2*inf_x)
+    t_m = 0.5*np.ones((n_x,n_y,n_z),dtype = data_type)
+    t = np.stack((t_e,t_e,t_e,t_m,t_m,t_m),axis = -1)
+
+    return t
+
 def NL_ELECTRIC_DISPERSION_OPERATORS_TRAIN(res_freq,damp,del_x,del_t,inf_x,x_nl,weights,slope):
     # converts the electrical dispersion and non-linear physical parameters into relevent state and transmission operators
     # res_freq - resonant frequency (r/s) - np.float32, np.array, shape (n_x,n_y,n_z,n_r)
@@ -247,12 +264,20 @@ def CHI_2_NON_LINEAR_TEST(x_nl,t,u,f_pre):
     #
     # f: total fields - np.constant, shape (n_x,n_y,n_z,n_f/2)
 
+    cou = 0
     check = 1
 
-    while(check > 0.01):
+    while(check > 1.0e-4):
+        cou = cou + 1
         f = f_pre - (2*t*x_nl*f_pre**2-f_pre+u)/(4*t*x_nl*f_pre - 1)
-
         check = np.abs(np.amax(2*t*x_nl*f**2-f+u))
+        f_pre = f
+
+    f_0 =  ( 1 + np.sqrt(1-8.0*t*x_nl*u) ) / ( 4.0*t*x_nl )
+    f_1 = ( 1 - np.sqrt(1-8.0*t*x_nl*u) ) / ( 4.0*t*x_nl )
+    a = -8.0*t*x_nl*u
+    f_1_test = ( 1- ( 1 + 0.5*(-8.0*t*x_nl*u) - (1/8)*(-8.0*t*x_nl*u)**2 ) ) / ( 4.0*t*x_nl )
+    f_2_test = u+2*t*x_nl*u**2
 
     return f
 # ---------------------------------------------------------------------- #
@@ -468,7 +493,7 @@ def CONSTANT_MATRICES():
 
     return r_1_t , r , p
 
-def MULTIPLE_CONSTANT_TENSORS(w_0,n_c,n_f):
+def MULTIPLE_CONSTANT_TENSORS(inf_x,n_c,n_f):
     # produces the constant tensors used to scatter the fields and construct the boundary tensor
     # n_c: number of voltage components - shape(1,)
     # n_f: number of field components - shape(1,)
@@ -477,7 +502,7 @@ def MULTIPLE_CONSTANT_TENSORS(w_0,n_c,n_f):
     r_1_t_matrix , r_matrix , p_matrix = CONSTANT_MATRICES()
 
     #spatial parameters
-    n_x,n_y,n_z,_ = np.shape(w_0)
+    n_x,n_y,n_z = np.shape(inf_x)
 
     #initilize tensor
     boundary = np.ones((n_x,n_y,n_z,n_c),dtype = data_type)
@@ -629,8 +654,29 @@ def NL_MULTIPLE_TRANSMISSION(f_r,sta_ope,x,t,k,x_nl,s_e_pre,f_pre):
     #calculate the main accumulator
     # s_e_pre = f_r + tf.multiply(k,f) - tf.multiply(2*x_nl,f**2) + s_e_d
     s_e_pre = f_r + np.multiply(k,f) - np.multiply(2*x_nl,f**2) + s_e_d
+    s_e_preeee = f_r + np.multiply(k,f) + s_e_d
 
     return f , s_e_pre , x_next
+
+def LINEAR_NONDISPERSIVE_TRANSMISSION(f_r,t):
+    # transmitts the reflected fields into the total fields for a linear,non-dispersive material
+    # f_r: reflected fields - np.constant, shape (n_x,n_y,n_z,n_f/2)
+    # sta_ope: a list of state operators - shape(4,)
+    # x: state variable tensor - np.constant, shape (n_x,n_y,n_z,# of state variables,n_f/2)
+    # t: constant tensor operating on f_r and s_pre to update f - shape(n_x,n_y,n_z,n_f/2)
+    # k: constant tensor operating on f to update s - shape(n_x,n_y,n_z,n_f/2)
+    # x_nl: the non-linear second order susceptibility - np.constant, shape(n_x,n_y,n_z,n_f/2)
+    # s_e_pre: previous total electric accumulator tensor - shape(n_x,n_y,n_z,n_f/2)
+    # f_pre: previous time step total fields - np.constant, shape (n_x,n_y,n_z,n_f/2)
+    #
+    # f: total fields - np.constant, shape (n_x,n_y,n_z,n_f/2)
+    # s_e_pre: previous total electric accumulator tensor - shape(n_x,n_y,n_z,n_f/2)
+    # x_next: the state variable matrix value at the next time step - np.constant, shape (n_x,n_y,n_z,# of state variables,n_f/2)
+
+    #update f
+    f = np.multiply(f_r, t)
+
+    return f
 
 def NL_MULTIPLE_SCATTER(v_i,v_f,r_1_t,r,p,x,tra_ope,s_e_pre,sta_ope,f_pre):
     # scatters the incident voltages and free-source fields into reflected
@@ -676,6 +722,32 @@ def NL_MULTIPLE_SCATTER(v_i,v_f,r_1_t,r,p,x,tra_ope,s_e_pre,sta_ope,f_pre):
 
     return v_r,s_e_pre,x_next,f
 
+def LINEAR_NONDISPERSIVE_SCATTER(v_i,v_f,r_1_t,r,p,t):
+    # scatters the incident voltages and free-source fields into reflected
+    # voltages for a linear, nondispersive material
+    #
+    # v_i: incident voltages , tf.constant - shape(n_x,n_y,n_z,n_c)
+    # v_f: free-source fields , tf.constant - shape(n_x,n_y,n_z,n_f)
+    # r_1_t: converts incident voltages to reflected fields , tf.constant - shape(n_x,n_y,n_z,n_f,n_c)
+    # r: converts total fields to reflected voltages , tf.constant - shape(n_x,n_y,n_z,n_c,n_f)
+    # p: flips incidnet voltages , tf.constant - shape(n_x,n_y,n_z,n_c,n_c)
+    # t: transmission coefficient from reflected to total field - list, shape (3,)
+    #
+    # v_r: reflected voltages , tf.constant - shape(n_x,n_y,n_z,n_c)
+    # f: total fields - np.constant, shape (n_x,n_y,n_z,n_f/2)
+
+    #calculate the reflected fields
+    # f_r = tf.einsum('ijkm,ijknm->ijkn',v_i,r_1_t) - 0.5*v_f
+    f_r = np.einsum('ijkm,ijknm->ijkn',v_i,r_1_t) - 0.5*v_f
+
+    #calculate total fields 
+    f = np.multiply(f_r, t)
+
+    #calculate reflected voltages
+    # v_r = tf.einsum('ijkm,ijknm->ijkn',f,r) - tf.einsum('ijkm,ijknm->ijkn',v_i,p)
+    v_r = np.einsum('ijkm,ijknm->ijkn',f,r) - np.einsum('ijkm,ijknm->ijkn',v_i,p)
+
+    return v_r,f
 # ---------------------------------------------------------------------- #
 ###         Propagation Operation
 
@@ -703,7 +775,7 @@ def NL_MULTIPLE_PROPAGATE(v_f,inf_x,w_0,damp,del_x,x_nl,del_t,n_c,n_t,n_f):
     sta_ope , tra_ope = NL_ELECTRIC_DISPERSION_OPERATORS(w_0,damp,del_x,del_t,inf_x,x_nl)
 
     #produce constant tensors for scattering
-    r_1_t,r,p,boundary = MULTIPLE_CONSTANT_TENSORS(w_0,n_c,n_f)
+    r_1_t,r,p,boundary = MULTIPLE_CONSTANT_TENSORS(inf_x,n_c,n_f)
 
     #initial conditions of total electric accumulator and state variable
     # s_e_pre = tf.zeros([n_x,n_y,n_z,n_f//2],dtype = data_type)
@@ -723,6 +795,57 @@ def NL_MULTIPLE_PROPAGATE(v_f,inf_x,w_0,damp,del_x,x_nl,del_t,n_c,n_t,n_f):
     for t in range(n_t):
 
         v_r,s_e_pre,x,f = NL_MULTIPLE_SCATTER(v_i,v_f[:,:,:,:,t],r_1_t,r,p,x,tra_ope,s_e_pre,sta_ope,f)    
+
+        v_i = TRANSFER(v_r)
+
+        #perform boundary condition
+        v_i = v_i*boundary
+
+        # f_tmp = tf.reshape(f,(n_x,n_y,n_z,n_f,1))
+        # f_time = tf.concat( [f_time,f_tmp] , 4 )
+
+        f_tmp = np.reshape(f,(n_x,n_y,n_z,n_f,1))
+        f_time = np.concatenate( [f_time,f_tmp] , 4 )
+
+
+    f_final = f_tmp
+
+    return v_i , f_time , f_final
+
+def LINEAR_NONDISPERSIVE_PROPAGATE(v_f,inf_x,del_t,n_c,n_t,n_f):
+    # propagte the voltages for a non-linear multiple resonant lorentz model (both scattering and transfer)
+    #
+    # v_f: free-source fields , tf.constant - shape(n_x,n_y,n_z,n_f,n_t)
+    # inf_x: high frequency susceptibility tensor - np.constant, shape(n_x,n_y,n_z)
+    # del_t - the time step of the simulation (s) - np.float32, shape(1,)
+    # n_c: number of voltage components - int, shape(1,)
+    # n_t: number of time steps - int, shape(1,)
+    # n_f: number of field components at each point in space - int, shape(1,)
+    #
+    # v_i: voltage incident - tf.constant, shape(n_x,n_y,n_z,n_c)
+    # f_time: total fields for all time - tf.constant, shape(n_x,n_y,n_z,n_f,n_t)
+    # f_final: total fields at last time step - tf.constant, shape(n_x,n_y,n_z,n_f)
+    
+    #get spatial steps and number of resonances
+    n_x,n_y,n_z = np.shape(inf_x)
+
+    #determine the electrical dispersion state variable operators
+    tra_op = LINEAR_NONDISPERSIVE_OPERATORS(inf_x)
+
+    #produce constant tensors for scattering
+    r_1_t,r,p,boundary = MULTIPLE_CONSTANT_TENSORS(inf_x,n_c,n_f)
+
+    #initilize field
+    f_time = np.zeros((n_x,n_y,n_z,n_f,0),dtype = np.float32)
+    # v_i = tf.zeros([n_x,n_y,n_z,n_c],dtype = np.float32)
+    # f = tf.zeros([n_x,n_y,n_z,n_f],dtype = np.float32)
+
+    v_i = np.zeros([n_x,n_y,n_z,n_c],dtype = np.float32)
+    f = np.zeros([n_x,n_y,n_z,n_f],dtype = np.float32)
+
+    for t in range(n_t):
+
+        v_r,f = LINEAR_NONDISPERSIVE_SCATTER(v_i,v_f[:,:,:,:,t],r_1_t,r,p,tra_op) 
 
         v_i = TRANSFER(v_r)
 
@@ -775,7 +898,7 @@ def TIME_DEP_NL_MULTIPLE_PROPAGATE(v_f,inf_x,w_0,damp,del_x,x_nl,del_t,n_c,n_t,n
         sta_ope , tra_ope = NL_ELECTRIC_DISPERSION_OPERATORS(w_0[:,:,:,:,t],damp[:,:,:,:,t],del_x[:,:,:,:,t],del_t,inf_x[:,:,:,t],x_nl[:,:,: ,t])
 
         #produce constant tensors for scattering
-        r_1_t,r,p,boundary = MULTIPLE_CONSTANT_TENSORS(w_0[:,:,:,:,t],n_c,n_f)
+        r_1_t,r,p,boundary = MULTIPLE_CONSTANT_TENSORS(inf_x[:,:,:,t],n_c,n_f)
 
         v_r,s_e_pre,x,f = NL_MULTIPLE_SCATTER(v_i,v_f[:,:,:,:,t],r_1_t,r,p,x,tra_ope,s_e_pre,sta_ope,f)    
 
@@ -821,7 +944,7 @@ def NL_MULTIPLE_PROPAGATE_TRAIN(v_f,inf_x,w_0,damp,del_x,x_nl,del_t,n_c,n_t,n_f,
     sta_ope , tra_ope = NL_ELECTRIC_DISPERSION_OPERATORS_TRAIN(w_0,damp,del_x,del_t,inf_x,x_nl,weights,slope)
 
     #produce constant tensors for scattering
-    r_1_t,r,p,boundary = MULTIPLE_CONSTANT_TENSORS(w_0,n_c,n_f)
+    r_1_t,r,p,boundary = MULTIPLE_CONSTANT_TENSORS(inf_x,n_c,n_f)
 
     #initial conditions of total electric accumulator and state variable
     # s_e_pre = tf.zeros([n_x,n_y,n_z,n_f//2],dtype = data_type)

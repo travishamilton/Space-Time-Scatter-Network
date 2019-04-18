@@ -9,11 +9,11 @@ from main import *
 # -------------------- Simulation Parameters ------------------- #
 # ------------------------------- ------------------------------ #
 
-n_x = 1
-n_y = 3000
+n_x = 2
+n_y = 800
 n_z = 1 
 
-n_t = 10000
+n_t = 1500
 
 # ------------------------------- ------------------------------ #
 # ---------------------- Source Parameters --------------------- #
@@ -25,13 +25,13 @@ polarization = 2
 wavelength = 1.500e-6
 injection_axis = 1
 injection_direction = 0
-fwhm = 3.5*wavelength/c0
+fwhm = 1.5*wavelength/c0
 fwhm_mode = 15
 n_m = 2
 center_mode = 0
 mode_axis = 0
 source_type = 'Line'
-del_l = 5e-9
+del_l = 10.0e-9
 
 source_par = [polarization,wavelength,fwhm,location,injection_axis,injection_direction,source_type,fwhm_mode,n_m,center_mode,mode_axis]
 
@@ -47,12 +47,12 @@ w_0_mat = np.array([10105,9037])*10**12
 damp_mat = 0.0*w_0_mat
 a_i_mat = np.array([3.6613,0.1776])*0
 del_x_mat = a_i_mat
-x_nl = 10e-12/del_l
+x_nl = 40e-12/del_l
 mask_start = np.array([0,75,0])
 mask_end = np.array([0,125,0])
 
-mask_start = (0,500,0)
-mask_end = (0,3900,0)
+mask_start = (0,0,0)
+mask_end = (0,n_y*2,0)
 
 mat_par = [n_r,inf_x_mat,w_0_mat,damp_mat,del_x_mat,x_nl,mask_start,mask_end,n_m]
 
@@ -74,7 +74,7 @@ n_x = 1
 n_y = 1000
 n_z = 1 
 
-n_t = 1000
+n_t = 20000
 
 # ------------------------------- ------------------------------ #
 # ---------------------- Source Parameters --------------------- #
@@ -92,7 +92,7 @@ n_m = 2
 center_mode = 0
 mode_axis = 0
 source_type = 'Line'
-del_l = 5e-9
+del_l = 1.0e-9
 
 source_par = [polarization,wavelength,fwhm,location,injection_axis,injection_direction,source_type,fwhm_mode,n_m,center_mode,mode_axis]
 
@@ -121,19 +121,17 @@ n = 20
 # [[3,3],[2,2]]
 
 inf_x_mat = np.array([[n**2-1,n**2-1],[n**2-1,n**2-1]])
-w_0_mat = np.array([[0,0],[0,0]])
-damp_mat = np.array([[0,0],[0,0]])
+f_0_mat = np.array([[0,0],[100e12,100e12]])
+w_0_mat = 2*np.pi*f_0_mat
+damp_mat = 0.5*w_0_mat
 x_nl_mat = np.array([[0,0],[0,0]])
-del_x_mat = np.array([[0,0],[0,300]])
+del_x_mat = np.array([[300,300],[300,300]])
  
-x_nl = 0/del_l
+#x_nl = 0/del_l
 
-mat_start = np.array([[0,450,0],[0,650,0]]) 
-mat_end = np.array([[0,550,0],[0,750,0]])
+mat_start = np.array([[0,0,0],[0,750,0]]) 
+mat_end = np.array([[0,749,0],[0,1000,0]])
 t_change = 500
-
-print('0 mat_start: ',mat_start[0,:])
-print('1 mat_start: ',mat_start[1,:])
  
 mat_par = [inf_x_mat,w_0_mat,damp_mat,del_x_mat,x_nl_mat,mat_start,mat_end,n_m,t_change]
 
@@ -142,4 +140,57 @@ mat_par = [inf_x_mat,w_0_mat,damp_mat,del_x_mat,x_nl_mat,mat_start,mat_end,n_m,t
 # --------------------- Run Multiple Forward ------------------- #
 # ------------------------------- ------------------------------ #
 
-TIME_DEP_FORWARD(n_x,n_y,n_z,n_t,del_l,source_par,mat_par)
+#TIME_DEP_FORWARD(n_x,n_y,n_z,n_t,del_l,source_par,mat_par)
+
+##################################################################
+################### 2D Linear Nondispersive ######################
+##################################################################
+
+# ------------------------------- ------------------------------ #
+# -------------------- Simulation Parameters ------------------- #
+# ------------------------------- ------------------------------ #
+
+n_x = 200
+n_y = 200
+n_z = 1 
+
+n_t = 200
+
+# ------------------------------- ------------------------------ #
+# ---------------------- Source Parameters --------------------- #
+# ------------------------------- ------------------------------ #
+
+c0 = 2.99792458e8
+del_l = 30.0e-9
+
+location = (0,5,0)
+polarization = 2
+wavelength = 1.500e-6
+injection_axis = 1
+injection_direction = 0
+fwhm = 0.5*wavelength/c0
+fwhm_mode = 70*del_l
+n_m = 2
+center_mode = n_x//2*del_l
+mode_axis = 0
+source_type = 'Mode'
+
+
+source_par = [polarization,wavelength,fwhm,location,injection_axis,injection_direction,source_type,fwhm_mode,n_m,center_mode,mode_axis]
+
+# ------------------------------- ------------------------------ #
+# --------------------- Material Parameters -------------------- #
+# ------------------------------- ------------------------------ #
+
+inf_x_mat = 1.25
+mat_start = np.array([20,15,0])
+mat_end = np.array([25,175,0])
+
+mat_par = [inf_x_mat,mat_start,mat_end]
+
+
+# ------------------------------- ------------------------------ #
+# --------------------- Run Multiple Forward ------------------- #
+# ------------------------------- ------------------------------ #
+
+FORWARD_2D_LINEAR_NONDISPERSIVE(n_x,n_y,n_z,n_t,del_l,source_par,mat_par)
