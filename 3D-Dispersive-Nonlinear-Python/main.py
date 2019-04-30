@@ -112,7 +112,7 @@ def FORWARD(n_x,n_y,n_z,n_t,del_l,source_par,mat_par):
     plt.show()
 
 def FORWARD_2D_LINEAR_NONDISPERSIVE(n_x,n_y,n_z,n_t,del_l,source_par,mat_par):
-    #performs a forward non-linear multiple Lorentz resonace simulation
+    #performs a forward linear nondispersive simulation
     # n_x: number of spatial parameters in the x or 0th axis direction - tf.constant (int), shape(1,)
     # n_y: number of spatial parameters in the y or 1st axis direction - tf.constant (int), shape(1,)
     # n_z: number of spatial parameters in the z or 2nd axis direction - tf.constant (int), shape(1,)
@@ -138,6 +138,41 @@ def FORWARD_2D_LINEAR_NONDISPERSIVE(n_x,n_y,n_z,n_t,del_l,source_par,mat_par):
     print("Building Graph ... ... ...")
 
     v_i , f_time, f_final = LINEAR_NONDISPERSIVE_PROPAGATE(v_f,inf_x,del_t,n_c,n_t,n_f)
+
+    PLOT_VIDEO_2D_Z(f_time,del_l,del_t,6)
+
+    print("Done!\n")
+
+    plt.show()
+
+def TIME_DEP_FORWARD_2D_LINEAR_NONDISPERSIVE(n_x,n_y,n_z,n_t,del_l,source_par,mat_par):
+    #performs a forward time dependent linear nondispersive simulation
+    # n_x: number of spatial parameters in the x or 0th axis direction - tf.constant (int), shape(1,)
+    # n_y: number of spatial parameters in the y or 1st axis direction - tf.constant (int), shape(1,)
+    # n_z: number of spatial parameters in the z or 2nd axis direction - tf.constant (int), shape(1,)
+    # n_t: number of time steps the simulation takes - tf.constant (int), shape(1,)
+    # del_l: the lenght of the mesh step in all three directions (m) - tf.constant (int), shape(1,)
+    # n_r: number of resonances - tf.constant (int), shape(1,)
+    # source_par: contains the parameters relevent for making the source - list, shape(11,)
+    # mat_par: contains the parameters relevent for the material - list, shape(9,)
+
+    #determine time step based on the criteria del_l/del_t = 2*c0
+    del_t = del_l/(2*c0)
+
+    # ----------------- Simulation Parameters ---------------------- #
+    inf_x = TIME_DEP_LINEAR_NONDISPERSIVE_PARAMETERS(n_x,n_y,n_z,n_t,mat_par[0],mat_par[1],mat_par[2],mat_par[3],mat_par[4])
+    #for now plot only the first time step - change later to make it more robust
+    PLOT_LINEAR_NONDISPERSIVE_PARAMETERS_2D_Z(inf_x[:,:,:,0],del_l,fig_num = 1)
+
+    # ----------------- Source ------------------------------------- #
+    v_f,time_source,current_density = SOURCE(n_f,n_t,del_t,del_l,n_x,n_y,n_z,source_par[0],source_par[1],source_par[2],source_par[3],source_par[4],source_par[5],source_par[6],source_par[7],source_par[8],source_par[9],source_par[10])
+    PLOT_TIME_SOURCE(v_f,time_source,current_density,del_l,fig_num=[3,4,5],location = source_par[3],del_t = del_t)
+
+    #--------------------------- Graph Construction --------------------------#
+    # compute least squares cost for each sample and then average out their costs
+    print("Building Graph ... ... ...")
+
+    v_i , f_time, f_final = TIME_DEP_LINEAR_NONDISPERSIVE_PROPAGATE(v_f,inf_x,del_t,n_c,n_t,n_f)
 
     PLOT_VIDEO_2D_Z(f_time,del_l,del_t,6)
 

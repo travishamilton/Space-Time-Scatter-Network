@@ -175,4 +175,48 @@ def TIME_DEP_PARAMETERS(n_x,n_y,n_z,n_t,inf_x_mat,w_0_mat,damp_mat,del_x_mat,x_n
             raise ValueError("Starting index must be smaller than or equal to ending index.")
 
     return inf_x,w_0,damp,del_x,x_nl,n_r
+
+def TIME_DEP_LINEAR_NONDISPERSIVE_PARAMETERS(n_x,n_y,n_z,n_t,inf_x_mat,mat_start,mat_end,n_m,t_change):
+    # produces the parameters for dispersive and non-linear materials with one Lorentz resonance
+    # n_x: number of spatial steps in the 0th dimension - int, shape (1,)
+    # n_y: number of spatial steps in the 1st dimension - int, shape (1,)
+    # n_z: number of spatial steps in the 2nd dimension - int, shape (1,)
+    # n_r: number of Lorentz resonances within the material - int, shape (1,)
+    # n_t: number of time steps - int, shape(1,)
+    # inf_x_mat: susceptibility at infinte frequency (chi = n**2 -1) - float, shape(n_m,2)
+    # mat_start: smallest coordinates of a material region - tuple int, shape(n_m,3)
+    # mat_end: largest coordinates of a material region - tuple int, shape(n_m,3)
+    # n_m: number of materials present in simulation - int. shape(1,)
+    #
+    # inf_x: high frequency susceptibility tensor - np.constant, shape(n_x,n_y,n_z,n_t)
+
+    #number of resonances 
+    n_r = 1
+
+    #set values to free space
+    inf_x = np.zeros((n_x,n_y,n_z,n_t),dtype = dtype)
+
+    #look at all the materials
+    for m in range(n_m):
+
+        #check to make sure mask makes sense
+        if mat_start[m,0] <= mat_end[m,0] and mat_start[m,1] <= mat_end[m,1] and mat_start[m,2] <= mat_end[m,2]:
+
+            #assign same values across all space
+            for i in range(n_x):
+                if i >= mat_start[m,0] and i <= mat_end[m,0]:
+                    for j in range(n_y):
+                        if j >= mat_start[m,1] and j <= mat_end[m,1]:
+                            for k in range(n_z):
+                                if k >= mat_start[m,2] and k <= mat_end[m,2]:
+                                    for t in range(n_t):
+                                        if t >= t_change:
+                                            inf_x[i,j,k,t] = inf_x_mat[m,1]
+                                        else:
+                                            inf_x[i,j,k,t] = inf_x_mat[m,0]
+
+        else:
+            raise ValueError("Starting index must be smaller than or equal to ending index.")
+
+    return inf_x
     

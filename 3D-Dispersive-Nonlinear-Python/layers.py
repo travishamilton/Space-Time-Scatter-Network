@@ -280,6 +280,19 @@ def CHI_2_NON_LINEAR_TEST(x_nl,t,u,f_pre):
     f_2_test = u+2*t*x_nl*u**2
 
     return f
+
+def CHI_2_NON_LINEAR_TEST_2(x_nl,t,u,f_pre):
+    # solve the non-linear chi 2 update equation for f
+    # x_nl: the non-linear second order susceptibility - np.constant, shape(n_x,n_y,n_z,n_f/2)
+    # t: constant tensor operating on f , s_pre and f**2 to update f - shape(n_x,n_y,n_z,n_f/2)
+    # u: forcing function of non-linear f update equation - np.constant, shape (n_x,n_y,n_z,n_f/2)
+    # f_pre: the previous total fields - np.constant, shape (n_x,n_y,n_z,n_f/2)
+    #
+    # f: total fields - np.constant, shape (n_x,n_y,n_z,n_f/2
+    
+    f = u + 2*t*x_nl*u**2
+
+    return f
 # ---------------------------------------------------------------------- #
 ###         Misc. Mathematical Operations
 
@@ -634,7 +647,7 @@ def NL_MULTIPLE_TRANSMISSION(f_r,sta_ope,x,t,k,x_nl,s_e_pre,f_pre):
     u = np.multiply((f_r + s_e_pre), t)
 
     #update f
-    f = CHI_2_NON_LINEAR_TEST(x_nl,t,u,f_pre)
+    f = CHI_2_NON_LINEAR_TEST_2(x_nl,t,u,f_pre)
 
     #calculate dielectric accumulator in x
     s_e_d_x , x_next_x = MULTIPLE_LORENTZ(f[:,:,:,0],x[:,:,:,:,0],sta_ope[0],sta_ope[1],sta_ope[2],sta_ope[3])
@@ -901,6 +914,54 @@ def TIME_DEP_NL_MULTIPLE_PROPAGATE(v_f,inf_x,w_0,damp,del_x,x_nl,del_t,n_c,n_t,n
         r_1_t,r,p,boundary = MULTIPLE_CONSTANT_TENSORS(inf_x[:,:,:,t],n_c,n_f)
 
         v_r,s_e_pre,x,f = NL_MULTIPLE_SCATTER(v_i,v_f[:,:,:,:,t],r_1_t,r,p,x,tra_ope,s_e_pre,sta_ope,f)    
+
+        v_i = TRANSFER(v_r)
+
+        #perform boundary condition
+        v_i = v_i*boundary
+
+        # f_tmp = tf.reshape(f,(n_x,n_y,n_z,n_f,1))
+        # f_time = tf.concat( [f_time,f_tmp] , 4 )
+
+        f_tmp = np.reshape(f,(n_x,n_y,n_z,n_f,1))
+        f_time = np.concatenate( [f_time,f_tmp] , 4 )
+
+
+    f_final = f_tmp
+
+    return v_i , f_time , f_final
+
+def TIME_DEP_LINEAR_NONDISPERSIVE_PROPAGATE(v_f,inf_x,del_t,n_c,n_t,n_f):
+    # propagte the voltages for a non-linear multiple resonant lorentz model with time dependent materials (both scattering and transfer)
+    # v_f: free-source fields , tf.constant - shape(n_x,n_y,n_z,n_f,n_t)
+    # inf_x: high frequency susceptibility tensor - np.constant, shape(n_x,n_y,n_z,n_t)
+    # x_nl: non-linear susceptibility - np.constant, shape(n_x,n_y,n_z,n_t)
+    # del_t - the time step of the simulation (s) - np.float32, shape(1,)
+    # n_c: number of voltage components - int, shape(1,)
+    # n_t: number of time steps - int, shape(1,)
+    # n_f: number of field components at each point in space - int, shape(1,)
+    #
+    # v_i: voltage incident - tf.constant, shape(n_x,n_y,n_z,n_c)
+    # f_time: total fields for all time - tf.constant, shape(n_x,n_y,n_z,n_f,n_t)
+    # f_final: total fields at last time step - tf.constant, shape(n_x,n_y,n_z,n_f)
+    
+    #get spatial steps and number of resonances
+    n_x,n_y,n_z,n_t = np.shape(inf_x)
+
+    #initilize field
+    f_time = np.zeros((n_x,n_y,n_z,n_f,0),dtype = np.float32)
+    v_i = np.zeros([n_x,n_y,n_z,n_c],dtype = np.float32)
+    f = np.zeros([n_x,n_y,n_z,n_f],dtype = np.float32)
+
+    for t in range(n_t):
+
+        #determine the electrical dispersion state variable operators
+        tra_op = LINEAR_NONDISPERSIVE_OPERATORS(inf_x[:,:,:,t])
+
+        #produce constant tensors for scattering
+        r_1_t,r,p,boundary = MULTIPLE_CONSTANT_TENSORS(inf_x[:,:,:,t],n_c,n_f)
+
+        v_r,f = LINEAR_NONDISPERSIVE_SCATTER(v_i,v_f[:,:,:,:,t],r_1_t,r,p,tra_op) 
 
         v_i = TRANSFER(v_r)
 
