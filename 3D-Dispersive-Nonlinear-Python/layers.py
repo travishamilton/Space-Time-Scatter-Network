@@ -817,11 +817,10 @@ def NL_MULTIPLE_PROPAGATE(v_f,inf_x,w_0,damp,del_x,x_nl,del_t,n_c,n_t,n_f):
         # f_tmp = tf.reshape(f,(n_x,n_y,n_z,n_f,1))
         # f_time = tf.concat( [f_time,f_tmp] , 4 )
 
-        f_tmp = np.reshape(f,(n_x,n_y,n_z,n_f,1))
-        f_time = np.concatenate( [f_time,f_tmp] , 4 )
+        #save field over space and time
+        f_time[:,:,:,:,t] = f
 
-
-    f_final = f_tmp
+    f_final = f
 
     return v_i , f_time , f_final
 
@@ -868,11 +867,10 @@ def LINEAR_NONDISPERSIVE_PROPAGATE(v_f,inf_x,del_t,n_c,n_t,n_f):
         # f_tmp = tf.reshape(f,(n_x,n_y,n_z,n_f,1))
         # f_time = tf.concat( [f_time,f_tmp] , 4 )
 
-        f_tmp = np.reshape(f,(n_x,n_y,n_z,n_f,1))
-        f_time = np.concatenate( [f_time,f_tmp] , 4 )
+        #save field over space and time
+        f_time[:,:,:,:,t] = f
 
-
-    f_final = f_tmp
+    f_final = f
 
     return v_i , f_time , f_final
 
@@ -920,17 +918,14 @@ def TIME_DEP_NL_MULTIPLE_PROPAGATE(v_f,inf_x,w_0,damp,del_x,x_nl,del_t,n_c,n_t,n
         #perform boundary condition
         v_i = v_i*boundary
 
-        # f_tmp = tf.reshape(f,(n_x,n_y,n_z,n_f,1))
-        # f_time = tf.concat( [f_time,f_tmp] , 4 )
+        #save field over space and time
+        f_time[:,:,:,:,t] = f
 
-        f_tmp = np.reshape(f,(n_x,n_y,n_z,n_f,1))
-        f_time = np.concatenate( [f_time,f_tmp] , 4 )
-
-
-    f_final = f_tmp
+    f_final = f
 
     return v_i , f_time , f_final
 
+#@profile
 def TIME_DEP_LINEAR_NONDISPERSIVE_PROPAGATE(v_f,inf_x,del_t,n_c,n_t,n_f):
     # propagte the voltages for a non-linear multiple resonant lorentz model with time dependent materials (both scattering and transfer)
     # v_f: free-source fields , tf.constant - shape(n_x,n_y,n_z,n_f,n_t)
@@ -950,6 +945,7 @@ def TIME_DEP_LINEAR_NONDISPERSIVE_PROPAGATE(v_f,inf_x,del_t,n_c,n_t,n_f):
 
     #initilize field
     f_time = np.zeros((n_x,n_y,n_z,n_f,0),dtype = np.float32)
+    f_time = np.zeros((n_x,n_y,n_z,n_f,n_t),dtype = np.float32)
     v_i = np.zeros([n_x,n_y,n_z,n_c],dtype = np.float32)
     f = np.zeros([n_x,n_y,n_z,n_f],dtype = np.float32)
 
@@ -968,14 +964,11 @@ def TIME_DEP_LINEAR_NONDISPERSIVE_PROPAGATE(v_f,inf_x,del_t,n_c,n_t,n_f):
         #perform boundary condition
         v_i = v_i*boundary
 
-        # f_tmp = tf.reshape(f,(n_x,n_y,n_z,n_f,1))
-        # f_time = tf.concat( [f_time,f_tmp] , 4 )
+        #save field over space and time
+        f_time[:,:,:,:,t] = f
 
-        f_tmp = np.reshape(f,(n_x,n_y,n_z,n_f,1))
-        f_time = np.concatenate( [f_time,f_tmp] , 4 )
+    f_final = f
 
-
-    f_final = f_tmp
 
     return v_i , f_time , f_final
 
@@ -1034,9 +1027,9 @@ def NL_MULTIPLE_PROPAGATE_TRAIN(v_f,inf_x,w_0,damp,del_x,x_nl,del_t,n_c,n_t,n_f,
         # f_tmp = tf.reshape(f,(n_x,n_y,n_z,n_f,1))
         # f_time = tf.concat( [f_time,f_tmp] , 4 )
 
-        f_tmp = np.reshape(f,(n_x,n_y,n_z,n_f,1))
-        f_time = np.concat( [f_time,f_tmp] , 4 )
+        #save field over space and time
+        f_time[:,:,:,:,t] = f
 
-    f_final = f_tmp
+    f_final = f
 
     return v_i , f_time , f_final
