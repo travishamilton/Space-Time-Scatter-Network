@@ -41,7 +41,7 @@ def TIME_SOURCE_E(polarization,n_f,del_t,n_t,wavelength,fwhm,del_l,location,inje
     #del_t: time step - np.float32, shape(1,)
     #n_t: number of time steps - int, shape(1,)
     #wavelength: center wavelenght of wave packket - float32 , shape(1,)
-    #fwhm: full width at half maximum in the time domain - int, shape(1,)
+    #fwhm: full width at half maximum in the time domain. If -1, the fwhm goes to infnity - int, shape(1,)
     #del_l: space step in all three directions - np.float32, shape(1,)
     #location: gives the location (i,j,k) of the source - tuple int, shape (3,)
     #injection_axis: gives the axis of injection - int, shape(1,)
@@ -62,7 +62,10 @@ def TIME_SOURCE_E(polarization,n_f,del_t,n_t,wavelength,fwhm,del_l,location,inje
     sigma = fwhm / 2.35482
 
     #free electric current density guassian wavepacket
-    current_density = np.sin(-omega*t)*np.exp(-(t-2*fwhm)**2/(2*sigma**2)) / (-del_l * eta_0 * 0.5 )
+    if fwhm == -1:
+        current_density = np.sin(-omega*t) / (-del_l * eta_0 * 0.5 )
+    else:
+        current_density = np.sin(-omega*t)*np.exp(-(t-2*fwhm)**2/(2*sigma**2)) / (-del_l * eta_0 * 0.5 )
     
     #initilize the free source
     time_source = np.zeros((n_t,n_f),dtype = data_type)

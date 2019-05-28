@@ -221,6 +221,7 @@ wavelength = 1.500e-6
 injection_axis = 1
 injection_direction = 0
 fwhm = 0.5*wavelength/c0
+fwhm = -1
 fwhm_mode = 70*del_l
 n_m = 2
 center_mode = n_x//2*del_l

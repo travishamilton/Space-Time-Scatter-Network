@@ -542,7 +542,7 @@ def MULTIPLE_CONSTANT_TENSORS(inf_x,n_c,n_f):
 
 
                 #build boundary tensor
-                if y == 0 or y == n_y - 1:
+                if y == 0 or y == n_y - 1 or x == 0 or x == n_x - 1:
                       boundary[x,y,z,:] = np.zeros(n_c,dtype = data_type)
    
     # return tf.convert_to_tensor(r_1_t) , tf.convert_to_tensor(r) , tf.convert_to_tensor(p) , tf.convert_to_tensor(boundary)
