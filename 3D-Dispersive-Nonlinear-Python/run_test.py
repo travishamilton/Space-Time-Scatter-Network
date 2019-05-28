@@ -1,5 +1,6 @@
 import numpy as np
 from main import *
+import time
 
 ##################################################################
 ################## 1D Lithium Niobate Example ####################
@@ -201,20 +202,20 @@ mat_par = [inf_x_mat,mat_start,mat_end]
 # -------------------- Simulation Parameters ------------------- #
 # ------------------------------- ------------------------------ #
 
-n_x = 100
-n_y = 100
+n_x = 200
+n_y = 200
 n_z = 1 
 
-n_t = 200
+n_t = 600
 
 # ------------------------------- ------------------------------ #
 # ---------------------- Source Parameters --------------------- #
 # ------------------------------- ------------------------------ #
 
 c0 = 2.99792458e8
-del_l = 30.0e-9
+del_l = 10.0e-9
 
-location = (0,5,0)
+location = (100,100,0)
 polarization = 2
 wavelength = 1.500e-6
 injection_axis = 1
@@ -249,12 +250,12 @@ source_par = [polarization,wavelength,fwhm,location,injection_axis,injection_dir
 # of 3 and 2 respectivelly, their inf_x_mat would look like
 # [[3,3],[2,2]]
 
-n1 = 20  #refractive inedex - material 1
-n2 = 25  #refractive index - material 2
-inf_x_mat = np.array([[n1**2-1,n1**2-1],[n**2-1,n**2-1]])
+n1 = 1.2  #refractive inedex - material 1
+n2 = 1.2  #refractive index - material 2
+inf_x_mat = np.array([[n1**2-1,n1**2-1],[n2**2-1,n2**2-1]])
 
-mat_start = np.array([[0,0,0],[50,50,0]]) 
-mat_end = np.array([[49,49,0],[100,100,0]])
+mat_start = np.array([[0,0,0],[196,196,0]]) 
+mat_end = np.array([[195,195,0],[200,200,0]])
 t_change = 500
 n_m,_ = np.shape(inf_x_mat)
  

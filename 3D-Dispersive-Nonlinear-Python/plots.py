@@ -41,7 +41,7 @@ def PLOT_TIME_SOURCE_LUMERICAL(v_f,fig_num,location):
 
 def PLOT_RESULTS_2(f_final,del_l,fig_num):
 
-    x = np.arange(0,len(f_final)*del_l,del_l)
+    x = np.arange(0,len(f_final),1)*del_l
     plt.figure(fig_num)
     plt.plot(x*1.0e9,np.squeeze(-f_final/del_l), 'b')
     plt.ylabel('V/m')
@@ -332,9 +332,12 @@ def PLOT_VIDEO_2D_Z(f_time,del_l,del_t,fig_num):
 
     fig,ax = plt.subplots()
 
+    #get electric field in z direction
+    Ez = -f_time[:,:,0,2,:]/del_l
+
     def animate(i):
         ax.clear()
-        ax.contourf(X*1.0e9,Y*1.0e9,-f_time[:,:,0,2,i]/del_l)
+        ax.contourf(X*1.0e9,Y*1.0e9,Ez[:,:,i],vmin = np.amin(Ez),vmax = np.amax(Ez))
         # fig.xlabel('nm')
         # fig.ylabel('nm')
         # ax.set_title('%03f'%(i*del_t*1.0e15))
@@ -344,6 +347,8 @@ def PLOT_VIDEO_2D_Z(f_time,del_l,del_t,fig_num):
     ani = animation.FuncAnimation(fig,animate,n_t,interval=interval*1e+3,blit=False)
 
     plt.show()
+
+    ani.save("2D_Ez.mp4")
 
 
 

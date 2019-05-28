@@ -70,16 +70,22 @@ def LINEAR_NONDISPERSIVE_OPERATORS(inf_x):
     # inf_x: high frequency susceptibility tensor - np.constant, shape(n_x,n_y,n_z)
     #
     # t: transmission operator - np.constant, shape(n_x,n_y,n_z,n_f)
+    # k: total fields operator for accumulator - np.constant, shape(n_x,n_y,n_z,n_f)
 
     #get size parameters
     n_x,n_y,n_z = np.shape(inf_x)
 
-    #produce transmission operators
+    #produce transmission operator
     t_e = 1/(2 + 2*inf_x)
     t_m = 0.5*np.ones((n_x,n_y,n_z),dtype = data_type)
     t = np.stack((t_e,t_e,t_e,t_m,t_m,t_m),axis = -1)
 
-    return t
+    #produce total fields operator for accumulator
+    k_e = -(2-2*inf_x)
+    k_m = -2*np.ones((n_x,n_y,n_z),dtype = data_type)
+    k = np.stack((k_e,k_e,k_e,k_m,k_m,k_m),axis = -1)
+
+    return t,k
 
 def NL_ELECTRIC_DISPERSION_OPERATORS_TRAIN(res_freq,damp,del_x,del_t,inf_x,x_nl,weights,slope):
     # converts the electrical dispersion and non-linear physical parameters into relevent state and transmission operators
@@ -735,7 +741,7 @@ def NL_MULTIPLE_SCATTER(v_i,v_f,r_1_t,r,p,x,tra_ope,s_e_pre,sta_ope,f_pre):
 
     return v_r,s_e_pre,x_next,f
 
-def LINEAR_NONDISPERSIVE_SCATTER(v_i,v_f,r_1_t,r,p,t):
+def LINEAR_NONDISPERSIVE_SCATTER(v_i,v_f,r_1_t,r,p,t,k,s_pre):
     # scatters the incident voltages and free-source fields into reflected
     # voltages for a linear, nondispersive material
     #
@@ -744,23 +750,29 @@ def LINEAR_NONDISPERSIVE_SCATTER(v_i,v_f,r_1_t,r,p,t):
     # r_1_t: converts incident voltages to reflected fields , tf.constant - shape(n_x,n_y,n_z,n_f,n_c)
     # r: converts total fields to reflected voltages , tf.constant - shape(n_x,n_y,n_z,n_c,n_f)
     # p: flips incidnet voltages , tf.constant - shape(n_x,n_y,n_z,n_c,n_c)
-    # t: transmission coefficient from reflected to total field - list, shape (3,)
+    # t: transmission coefficient from reflected to total field - list, shape (n_x,n_y,n_z,n_f)
+    # k: constant tensor operating on f to update s - shape(n_x,n_y,n_z,n_f)
+    # s_e_pre: previous total accumulator tensor - shape(n_x,n_y,n_z,n_f)
     #
     # v_r: reflected voltages , tf.constant - shape(n_x,n_y,n_z,n_c)
     # f: total fields - np.constant, shape (n_x,n_y,n_z,n_f/2)
+    # s_e_pre: updated total accumulator tensor - shape(n_x,n_y,n_z,n_f)
 
     #calculate the reflected fields
     # f_r = tf.einsum('ijkm,ijknm->ijkn',v_i,r_1_t) - 0.5*v_f
     f_r = np.einsum('ijkm,ijknm->ijkn',v_i,r_1_t) - 0.5*v_f
 
     #calculate total fields 
-    f = np.multiply(f_r, t)
+    f = np.multiply(f_r + s_pre, t)
 
     #calculate reflected voltages
     # v_r = tf.einsum('ijkm,ijknm->ijkn',f,r) - tf.einsum('ijkm,ijknm->ijkn',v_i,p)
     v_r = np.einsum('ijkm,ijknm->ijkn',f,r) - np.einsum('ijkm,ijknm->ijkn',v_i,p)
 
-    return v_r,f
+    #calculate accumulator
+    s = f_r + np.multiply(k,f)
+
+    return v_r,f,s
 # ---------------------------------------------------------------------- #
 ###         Propagation Operation
 
@@ -854,10 +866,11 @@ def LINEAR_NONDISPERSIVE_PROPAGATE(v_f,inf_x,del_t,n_c,n_t,n_f):
 
     v_i = np.zeros([n_x,n_y,n_z,n_c],dtype = np.float32)
     f = np.zeros([n_x,n_y,n_z,n_f],dtype = np.float32)
+    s_pre = np.zeros([n_x,n_y,n_z,n_f],dtype = np.float32)
 
     for t in range(n_t):
 
-        v_r,f = LINEAR_NONDISPERSIVE_SCATTER(v_i,v_f[:,:,:,:,t],r_1_t,r,p,tra_op) 
+        v_r,f,s_pre = LINEAR_NONDISPERSIVE_SCATTER(v_i,v_f[:,:,:,:,t],r_1_t,r,p,tra_op[0],tra_op[1],s_pre) 
 
         v_i = TRANSFER(v_r)
 
@@ -948,6 +961,7 @@ def TIME_DEP_LINEAR_NONDISPERSIVE_PROPAGATE(v_f,inf_x,del_t,n_c,n_t,n_f):
     f_time = np.zeros((n_x,n_y,n_z,n_f,n_t),dtype = np.float32)
     v_i = np.zeros([n_x,n_y,n_z,n_c],dtype = np.float32)
     f = np.zeros([n_x,n_y,n_z,n_f],dtype = np.float32)
+    s_pre = np.zeros([n_x,n_y,n_z,n_f],dtype = np.float32)
 
     for t in range(n_t):
 
@@ -957,7 +971,7 @@ def TIME_DEP_LINEAR_NONDISPERSIVE_PROPAGATE(v_f,inf_x,del_t,n_c,n_t,n_f):
         #produce constant tensors for scattering
         r_1_t,r,p,boundary = MULTIPLE_CONSTANT_TENSORS(inf_x[:,:,:,t],n_c,n_f)
 
-        v_r,f = LINEAR_NONDISPERSIVE_SCATTER(v_i,v_f[:,:,:,:,t],r_1_t,r,p,tra_op) 
+        v_r,f,s_pre = LINEAR_NONDISPERSIVE_SCATTER(v_i,v_f[:,:,:,:,t],r_1_t,r,p,tra_op[0],tra_op[1],s_pre) 
 
         v_i = TRANSFER(v_r)
 

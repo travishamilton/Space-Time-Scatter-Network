@@ -2,6 +2,7 @@ import numpy as np
 import os
 import matplotlib.pyplot as plt
 import matplotlib.animation as animation
+import time
 
 from plots import*
 from parameters import*
@@ -156,6 +157,8 @@ def TIME_DEP_FORWARD_2D_LINEAR_NONDISPERSIVE(n_x,n_y,n_z,n_t,del_l,source_par,ma
     # source_par: contains the parameters relevent for making the source - list, shape(11,)
     # mat_par: contains the parameters relevent for the material - list, shape(9,)
 
+    start = time.time()
+
     #determine time step based on the criteria del_l/del_t = 2*c0
     del_t = del_l/(2*c0)
 
@@ -174,9 +177,12 @@ def TIME_DEP_FORWARD_2D_LINEAR_NONDISPERSIVE(n_x,n_y,n_z,n_t,del_l,source_par,ma
 
     v_i , f_time, f_final = TIME_DEP_LINEAR_NONDISPERSIVE_PROPAGATE(v_f,inf_x,del_t,n_c,n_t,n_f)
 
-    PLOT_VIDEO_2D_Z(f_time,del_l,del_t,6)
 
+    print('total execution time: ',-start+time.time())
+    
     print("Done!\n")
+
+    PLOT_VIDEO_2D_Z(f_time,del_l,del_t,6)
 
     plt.show()
 
